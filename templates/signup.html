@@ -15,6 +15,10 @@
         <h4 class="mb-1 text-primary fw-bold">Креирај профил</h4>
         <p class="text-muted mb-4">Jpstrezevo HelpDesk</p>
         
+        {% if error %}
+            <div class="alert alert-danger py-2" role="alert">{{ error }}</div>
+        {% endif %}
+
         <form method="POST" action="/signup">
             <div class="mb-3 text-start">
                 <label class="form-label fw-semibold">Корисничко име</label>
@@ -27,6 +31,7 @@
             <div class="mb-3 text-start">
                 <label class="form-label fw-semibold">Улога</label>
                 <select name="role" class="form-select">
+                    <option value="employee">Вработен</option>
                     <option value="manager">Раководител (Manager)</option>
                     <option value="director">Директор (Director)</option>
                 </select>
