@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="mk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управување со корисници - Jpstrezevo</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-dark bg-primary shadow-sm">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/">← Назад кон контролна табла</a>
+            <span class="navbar-text text-white fw-semibold">Администраторски панел</span>
+        </div>
+    </nav>
+
+    <div class="container my-4">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white fw-bold text-primary">+ Додади нов корисник</div>
+            <div class="card-body">
+                <form method="POST" action="/admin/users" class="row g-3">
+                    <div class="col-md-3">
+                        <input type="text" name="username" class="form-control" placeholder="Корисничко име" required>
+                    </div>
+                    <div class="col-md-3">
+                        <input type="text" name="password" class="form-control" placeholder="Лозинка" required>
+                    </div>
+                    <div class="col-md-3">
+                        <select name="role" class="form-select">
+                            <option value="manager">Раководител (Manager)</option>
+                            <option value="director">Директор (Director)</option>
+                            <option value="admin">Админ (Admin)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <input type="text" name="sector" class="form-control" placeholder="Сектор" required>
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-success fw-bold">Зачувај корисник</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-header bg-white fw-bold">Регистрирани корисници</div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Корисничко име</th>
+                            <th>Улога</th>
+                            <th>Сектор</th>
+                            <th>Акција</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in users %}
+                        <tr>
+                            <td class="fw-semibold">{{ u.username }}</td>
+                            <td><span class="badge bg-info text-dark">{{ u.role }}</span></td>
+                            <td>{{ u.sector }}</td>
+                            <td>
+                                {% if u.username != 'admin' %}
+                                <form method="POST" action="/admin/delete_user/{{ u.id }}" style="display:inline;">
+                                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Дали сте сигурни?')">Избриши</button>
+                                </form>
+                                {% else %}
+                                <small class="text-muted">Главен админ</small>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
