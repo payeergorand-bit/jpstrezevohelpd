@@ -28,7 +28,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(120), nullable=False)
-    role = db.Column(db.String(20), nullable=False)  # admin, director, manager
+    role = db.Column(db.String(20), nullable=False)  # admin, director, manager, employee
     sector = db.Column(db.String(100), nullable=False)
 
 
@@ -72,9 +72,15 @@ def index():
         session.clear()
         return redirect(url_for("login"))
 
-    # Directors and Admins see all tasks, Managers see only their sector tasks
+    # Directors and Admins see all tasks, Managers and Employees see tasks for their sector/management
     if user.role in ["director", "admin"]:
         tasks = Task.query.order_by(Task.created_at.desc()).all()
+    elif user.role == "employee":
+        tasks = (
+            Task.query.filter_by(assigned_to_sector=user.sector)
+            .order_by(Task.created_at.desc())
+            .all()
+        )
     else:
         tasks = (
             Task.query.filter_by(assigned_to_manager=user.username)
@@ -82,7 +88,7 @@ def index():
             .all()
         )
 
-    managers = User.query.filter_by(role="manager").all()
+    managers = User.query.filter(User.role.in_(["manager", "employee"])).all()
     return render_template("index.html", user=user, tasks=tasks, managers=managers)
 
 
@@ -106,7 +112,7 @@ def signup():
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
-        role = request.form.get("role", "manager")
+        role = request.form.get("role", "employee")
         sector = request.form.get("sector") or "Општ сектор"
 
         if User.query.filter_by(username=username).first():
@@ -142,7 +148,7 @@ def add_task():
     if "username" not in session:
         return redirect(url_for("login"))
     user = User.query.filter_by(username=session["username"]).first()
-    if not user or user.role not in ["director", "admin"]:
+    if not user or user.role not in ["director", "admin", "manager"]:
         return redirect(url_for("index"))
 
     title = request.form.get("title")
@@ -174,7 +180,11 @@ def update_task(task_id):
     status = request.form.get("status")
     report_note = request.form.get("report_note")
 
-    if user.role in ["director", "admin"] or task.assigned_to_manager == user.username:
+    if (
+        user.role in ["director", "admin"]
+        or task.assigned_to_manager == user.username
+        or task.assigned_to_sector == user.sector
+    ):
         task.status = status
         task.report_note = report_note
         db.session.commit()
@@ -190,6 +200,8 @@ def reports():
 
     if user.role in ["director", "admin"]:
         tasks = Task.query.order_by(Task.created_at.desc()).all()
+    elif user.role == "employee":
+        tasks = Task.query.filter_by(assigned_to_sector=user.sector).all()
     else:
         tasks = Task.query.filter_by(assigned_to_manager=user.username).all()
 
@@ -216,7 +228,7 @@ def admin_users():
             )
             db.session.add(new_u)
             db.session.commit()
-    return redirect(url_for("admin_users"))
+        return redirect(url_for("admin_users"))
 
     users = User.query.all()
     return render_template("admin_users.html", user=user, users=users)
