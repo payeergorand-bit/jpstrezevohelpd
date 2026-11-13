@@ -25,208 +25,217 @@ db = SQLAlchemy(app)
 
 # Database Models
 class User(db.Model):
-  id = db.Column(db.Integer, primary_key=True)
-  username = db.Column(db.String(80), unique=True, nullable=False)
-  password = db.Column(db.String(120), nullable=False)
-  role = db.Column(db.String(20), nullable=False)  # admin, director, manager
-  sector = db.Column(db.String(100), nullable=False)
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password = db.Column(db.String(120), nullable=False)
+    role = db.Column(db.String(20), nullable=False)  # admin, director, manager
+    sector = db.Column(db.String(100), nullable=False)
 
 
 class Task(db.Model):
-  id = db.Column(db.Integer, primary_key=True)
-  title = db.Column(db.String(200), nullable=False)
-  description = db.Column(db.Text, nullable=True)
-  assigned_by = db.Column(db.String(80), nullable=False)
-  assigned_to_manager = db.Column(db.String(80), nullable=False)
-  assigned_to_sector = db.Column(db.String(100), nullable=False)
-  status = db.Column(db.String(30), default="Доделено")  # Доделено, Во тек, Завршено
-  report_note = db.Column(db.Text, nullable=True)
-  created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    assigned_by = db.Column(db.String(80), nullable=False)
+    assigned_to_manager = db.Column(db.String(80), nullable=False)
+    assigned_to_sector = db.Column(db.String(100), nullable=False)
+    status = db.Column(db.String(30), default="Доделено")  # Доделено, Во тек, Завршено
+    report_note = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 # Initialize Database & Default Admin (Executes correctly on Gunicorn/Render startup)
 with app.app_context():
-  try:
-    db.create_all()
-    if not User.query.filter_by(username="admin").first():
-      admin_user = User(
-          username="admin",
-          password="adminpassword",
-          role="admin",
-          sector="Централна управа",
-      )
-      db.session.add(admin_user)
-      db.session.commit()
-  except Exception as e:
-    print(f"Database init error: {e}")
+    try:
+        db.create_all()
+        if not User.query.filter_by(username="admin").first():
+            admin_user = User(
+                username="admin",
+                password="adminpassword",
+                role="admin",
+                sector="Централна управа",
+            )
+            db.session.add(admin_user)
+            db.session.commit()
+    except Exception as e:
+        print(f"Database init error: {e}")
 
 
 # Routes
 @app.route("/")
 def index():
-  if "username" not in session:
-    return redirect(url_for("login"))
+    if "username" not in session:
+        return redirect(url_for("login"))
 
-  user = User.query.filter_by(username=session["username"]).first()
-  if not user:
-    session.clear()
-    return redirect(url_for("login"))
+    user = User.query.filter_by(username=session["username"]).first()
+    if not user:
+        session.clear()
+        return redirect(url_for("login"))
 
-  # Directors and Admins see all tasks, Managers see only their sector tasks
-  if user.role in ["director", "admin"]:
-    tasks = Task.query.order_by(Task.created_at.desc()).all()
-  else:
-    tasks = (
-        Task.query.filter_by(assigned_to_manager=user.username)
-        .order_by(Task.created_at.desc())
-        .all()
-    )
+    # Directors and Admins see all tasks, Managers see only their sector tasks
+    if user.role in ["director", "admin"]:
+        tasks = Task.query.order_by(Task.created_at.desc()).all()
+    else:
+        tasks = (
+            Task.query.filter_by(assigned_to_manager=user.username)
+            .order_by(Task.created_at.desc())
+            .all()
+        )
 
-  managers = User.query.filter_by(role="manager").all()
-  return render_template("index.html", user=user, tasks=tasks, managers=managers)
+    managers = User.query.filter_by(role="manager").all()
+    return render_template("index.html", user=user, tasks=tasks, managers=managers)
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-  if request.method == "POST":
-    username = request.form.get("username")
-    password = request.form.get("password")
-    user = User.query.filter_by(username=username, password=password).first()
-    if user:
-      session["username"] = user.username
-      return redirect(url_for("index"))
-    return render_template(
-        "login.html", error="Невалидно корисничко име или лозинка."
-    )
-  return render_template("login.html")
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        user = User.query.filter_by(username=username, password=password).first()
+        if user:
+            session["username"] = user.username
+            return redirect(url_for("index"))
+        return render_template(
+            "login.html", error="Невалидно корисничко име или лозинка."
+        )
+    return render_template("login.html")
 
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
-  if request.method == "POST":
-    username = request.form.get("username")
-    password = request.form.get("password")
-    role = request.form.get("role", "manager")
-    sector = request.form.get("sector")
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        role = request.form.get("role", "manager")
+        sector = request.form.get("sector") or "Општ сектор"
 
-    if User.query.filter_by(username=username).first():
-      return render_template("signup.html", error="Корисничкото име веќе постои.")
+        if User.query.filter_by(username=username).first():
+            return render_template(
+                "signup.html", error="Корисничкото име веќе постои."
+            )
 
-    new_user = User(
-        username=username, password=password, role=role, sector=sector
-    )
-    db.session.add(new_user)
-    db.session.commit()
-    session["username"] = username
-    return redirect(url_for("index"))
-  return render_template("signup.html")
+        try:
+            new_user = User(
+                username=username, password=password, role=role, sector=sector
+            )
+            db.session.add(new_user)
+            db.session.commit()
+            session["username"] = username
+            return redirect(url_for("index"))
+        except Exception as e:
+            db.session.rollback()
+            return render_template(
+                "signup.html", error=f"Грешка при регистрација: {str(e)}"
+            )
+
+    return render_template("signup.html")
 
 
 @app.route("/logout")
 def logout():
-  session.clear()
-  return redirect(url_for("login"))
+    session.clear()
+    return redirect(url_for("login"))
 
 
 @app.route("/add_task", methods=["POST"])
 def add_task():
-  if "username" not in session:
-    return redirect(url_for("login"))
-  user = User.query.filter_by(username=session["username"]).first()
-  if not user or user.role not in ["director", "admin"]:
+    if "username" not in session:
+        return redirect(url_for("login"))
+    user = User.query.filter_by(username=session["username"]).first()
+    if not user or user.role not in ["director", "admin"]:
+        return redirect(url_for("index"))
+
+    title = request.form.get("title")
+    description = request.form.get("description")
+    manager_username = request.form.get("manager_username")
+
+    manager = User.query.filter_by(username=manager_username).first()
+    sector = manager.sector if manager else "Општ сектор"
+
+    new_task = Task(
+        title=title,
+        description=description,
+        assigned_by=user.username,
+        assigned_to_manager=manager_username,
+        assigned_to_sector=sector,
+    )
+    db.session.add(new_task)
+    db.session.commit()
     return redirect(url_for("index"))
-
-  title = request.form.get("title")
-  description = request.form.get("description")
-  manager_username = request.form.get("manager_username")
-
-  manager = User.query.filter_by(username=manager_username).first()
-  sector = manager.sector if manager else "Општ сектор"
-
-  new_task = Task(
-      title=title,
-      description=description,
-      assigned_by=user.username,
-      assigned_to_manager=manager_username,
-      assigned_to_sector=sector,
-  )
-  db.session.add(new_task)
-  db.session.commit()
-  return redirect(url_for("index"))
 
 
 @app.route("/update_task/<int:task_id>", methods=["POST"])
 def update_task(task_id):
-  if "username" not in session:
-    return redirect(url_for("login"))
-  user = User.query.filter_by(username=session["username"]).first()
-  task = Task.query.get_or_404(task_id)
+    if "username" not in session:
+        return redirect(url_for("login"))
+    user = User.query.filter_by(username=session["username"]).first()
+    task = Task.query.get_or_404(task_id)
 
-  status = request.form.get("status")
-  report_note = request.form.get("report_note")
+    status = request.form.get("status")
+    report_note = request.form.get("report_note")
 
-  if user.role in ["director", "admin"] or task.assigned_to_manager == user.username:
-    task.status = status
-    task.report_note = report_note
-    db.session.commit()
+    if user.role in ["director", "admin"] or task.assigned_to_manager == user.username:
+        task.status = status
+        task.report_note = report_note
+        db.session.commit()
 
-  return redirect(url_for("index"))
+    return redirect(url_for("index"))
 
 
 @app.route("/reports")
 def reports():
-  if "username" not in session:
-    return redirect(url_for("login"))
-  user = User.query.filter_by(username=session["username"]).first()
+    if "username" not in session:
+        return redirect(url_for("login"))
+    user = User.query.filter_by(username=session["username"]).first()
 
-  if user.role in ["director", "admin"]:
-    tasks = Task.query.order_by(Task.created_at.desc()).all()
-  else:
-    tasks = Task.query.filter_by(assigned_to_manager=user.username).all()
+    if user.role in ["director", "admin"]:
+        tasks = Task.query.order_by(Task.created_at.desc()).all()
+    else:
+        tasks = Task.query.filter_by(assigned_to_manager=user.username).all()
 
-  return render_template("reports.html", user=user, tasks=tasks)
+    return render_template("reports.html", user=user, tasks=tasks)
 
 
 @app.route("/admin/users", methods=["GET", "POST"])
 def admin_users():
-  if "username" not in session:
-    return redirect(url_for("login"))
-  user = User.query.filter_by(username=session["username"]).first()
-  if not user or user.role != "admin":
-    return redirect(url_for("index"))
+    if "username" not in session:
+        return redirect(url_for("login"))
+    user = User.query.filter_by(username=session["username"]).first()
+    if not user or user.role != "admin":
+        return redirect(url_for("index"))
 
-  if request.method == "POST":
-    username = request.form.get("username")
-    password = request.form.get("password")
-    role = request.form.get("role")
-    sector = request.form.get("sector")
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        role = request.form.get("role")
+        sector = request.form.get("sector") or "Општ сектор"
 
-    if not User.query.filter_by(username=username).first():
-      new_u = User(
-          username=username, password=password, role=role, sector=sector
-      )
-      db.session.add(new_u)
-      db.session.commit()
+        if not User.query.filter_by(username=username).first():
+            new_u = User(
+                username=username, password=password, role=role, sector=sector
+            )
+            db.session.add(new_u)
+            db.session.commit()
     return redirect(url_for("admin_users"))
 
-  users = User.query.all()
-  return render_template("admin_users.html", user=user, users=users)
+    users = User.query.all()
+    return render_template("admin_users.html", user=user, users=users)
 
 
 @app.route("/admin/delete_user/<int:user_id>", methods=["POST"])
 def delete_user(user_id):
-  if "username" not in session:
-    return redirect(url_for("login"))
-  user = User.query.filter_by(username=session["username"]).first()
-  if not user or user.role != "admin":
-    return redirect(url_for("index"))
+    if "username" not in session:
+        return redirect(url_for("login"))
+    user = User.query.filter_by(username=session["username"]).first()
+    if not user or user.role != "admin":
+        return redirect(url_for("index"))
 
-  target_user = User.query.get_or_404(user_id)
-  if target_user.username != "admin":
-    db.session.delete(target_user)
-    db.session.commit()
-  return redirect(url_for("admin_users"))
+    target_user = User.query.get_or_404(user_id)
+    if target_user.username != "admin":
+        db.session.delete(target_user)
+        db.session.commit()
+    return redirect(url_for("admin_users"))
 
 
 if __name__ == "__main__":
-  app.run(debug=True)
+    app.run(debug=True)
