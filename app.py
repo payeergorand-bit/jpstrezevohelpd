@@ -28,7 +28,9 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(120), nullable=False)
-    role = db.Column(db.String(20), nullable=False)  # admin, director, manager, employee
+    role = db.Column(
+        db.String(20), nullable=False
+    )  # admin, director, manager, employee
     sector = db.Column(db.String(100), nullable=False)
 
 
@@ -37,14 +39,18 @@ class Task(db.Model):
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=True)
     assigned_by = db.Column(db.String(80), nullable=False)
-    assigned_to_manager = db.Column(db.String(80), nullable=False)
+    assigned_to_manager = db.Column(
+        db.String(80), nullable=False
+    )  # Име на вработениот или корисникот
     assigned_to_sector = db.Column(db.String(100), nullable=False)
-    status = db.Column(db.String(30), default="Доделено")  # Доделено, Во тек, Завршено
+    status = db.Column(
+        db.String(30), default="Доделено"
+    )  # Доделено, Во тек, Завршено
     report_note = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-# Initialize Database & Default Admin (Executes correctly on Gunicorn/Render startup)
+# Initialize Database & Default Admin
 with app.app_context():
     try:
         db.create_all()
@@ -72,24 +78,28 @@ def index():
         session.clear()
         return redirect(url_for("login"))
 
-    # Directors and Admins see all tasks, Managers and Employees see tasks for their sector/management
+    # Приказ на задачи според улогата без редирект кавга
     if user.role in ["director", "admin"]:
         tasks = Task.query.order_by(Task.created_at.desc()).all()
     elif user.role == "employee":
         tasks = (
-            Task.query.filter_by(assigned_to_sector=user.sector)
+            Task.query.filter_by(assigned_to_manager=user.username)
             .order_by(Task.created_at.desc())
             .all()
         )
-    else:
+    else:  # Manager
         tasks = (
             Task.query.filter_by(assigned_to_manager=user.username)
             .order_by(Task.created_at.desc())
             .all()
         )
 
-    managers = User.query.filter(User.role.in_(["manager", "employee"])).all()
-    return render_template("index.html", user=user, tasks=tasks, managers=managers)
+    assignable_users = User.query.filter(
+        User.role.in_(["employee", "manager"])
+    ).all()
+    return render_template(
+        "index.html", user=user, tasks=tasks, managers=assignable_users
+    )
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -153,16 +163,16 @@ def add_task():
 
     title = request.form.get("title")
     description = request.form.get("description")
-    manager_username = request.form.get("manager_username")
+    assigned_to_user = request.form.get("manager_username")
 
-    manager = User.query.filter_by(username=manager_username).first()
-    sector = manager.sector if manager else "Општ сектор"
+    target_user = User.query.filter_by(username=assigned_to_user).first()
+    sector = target_user.sector if target_user else user.sector
 
     new_task = Task(
         title=title,
         description=description,
         assigned_by=user.username,
-        assigned_to_manager=manager_username,
+        assigned_to_manager=assigned_to_user,
         assigned_to_sector=sector,
     )
     db.session.add(new_task)
@@ -180,14 +190,10 @@ def update_task(task_id):
     status = request.form.get("status")
     report_note = request.form.get("report_note")
 
-    if (
-        user.role in ["director", "admin"]
-        or task.assigned_to_manager == user.username
-        or task.assigned_to_sector == user.sector
-    ):
-        task.status = status
+    task.status = status
+    if report_note:
         task.report_note = report_note
-        db.session.commit()
+    db.session.commit()
 
     return redirect(url_for("index"))
 
@@ -200,8 +206,6 @@ def reports():
 
     if user.role in ["director", "admin"]:
         tasks = Task.query.order_by(Task.created_at.desc()).all()
-    elif user.role == "employee":
-        tasks = Task.query.filter_by(assigned_to_sector=user.sector).all()
     else:
         tasks = Task.query.filter_by(assigned_to_manager=user.username).all()
 
