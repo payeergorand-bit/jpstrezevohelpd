@@ -37,7 +37,7 @@ class Task(db.Model):
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=True)
     assigned_by = db.Column(db.String(80), nullable=False)
-    assigned_to_manager = db.Column(db.String(80), nullable=False)  # Корисничко име на задолжениот
+    assigned_to_manager = db.Column(db.String(80), nullable=False)
     assigned_to_sector = db.Column(db.String(100), nullable=False)
     status = db.Column(db.String(30), default="Доделено")  # Доделено, Во тек, Завршено
     report_note = db.Column(db.Text, nullable=True)
@@ -75,9 +75,7 @@ def index():
     # Приказ на задачи според улогата
     if user.role in ["director", "admin"]:
         tasks = Task.query.order_by(Task.created_at.desc()).all()
-    elif user.role == "employee":
-        tasks = Task.query.filter_by(assigned_to_manager=user.username).order_by(Task.created_at.desc()).all()
-    else:  # Manager
+    else:
         tasks = Task.query.filter_by(assigned_to_manager=user.username).order_by(Task.created_at.desc()).all()
 
     assignable_users = User.query.filter(User.role.in_(["employee", "manager"])).all()
@@ -86,43 +84,48 @@ def index():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    error = None
     if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        
         user = User.query.filter_by(username=username, password=password).first()
         if user:
             session["username"] = user.username
             return redirect(url_for("index"))
-        return render_template("login.html", error="Невалидно корисничко име или лозинка.")
-    return render_template("login.html")
+        else:
+            error = "Невалидно корисничко име или лозинка."
+            
+    return render_template("login.html", error=error)
 
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
+    error = None
     if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
         role = request.form.get("role", "employee")
-        sector = request.form.get("sector") or "Општ сектор"
+        sector = request.form.get("sector", "").strip() or "Општ сектор"
 
         if User.query.filter_by(username=username).first():
-            return render_template("signup.html", error="Корисничкото име веќе постои.")
+            error = "Корисничкото име веќе постои."
+        else:
+            try:
+                new_user = User(
+                    username=username, password=password, role=role, sector=sector
+                )
+                db.session.add(new_user)
+                db.session.commit()
+                
+                # Автоматска најава веднаш по регистрација
+                session["username"] = new_user.username
+                return redirect(url_for("index"))
+            except Exception as e:
+                db.session.rollback()
+                error = f"Грешка при регистрација: {str(e)}"
 
-        try:
-            new_user = User(
-                username=username, password=password, role=role, sector=sector
-            )
-            db.session.add(new_user)
-            db.session.commit()
-            
-            # Автоматска најава (сесија) веднаш по успешна регистрација
-            session["username"] = new_user.username
-            return redirect(url_for("index"))
-        except Exception as e:
-            db.session.rollback()
-            return render_template("signup.html", error=f"Грешка при регистрација: {str(e)}")
-
-    return render_template("signup.html")
+    return render_template("signup.html", error=error)
 
 
 @app.route("/logout")
@@ -197,12 +200,6 @@ def admin_users():
     user = User.query.filter_by(username=session["username"]).first()
     if not user or user.role != "admin":
         return redirect(url_for("index"))
-
-    if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
-        role = request.form.get("role")
-        sector = request.form.get("sector") or "Општ сектор"
 
     users = User.query.all()
     return render_template("admin_users.html", user=user, users=users)
