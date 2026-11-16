@@ -16,20 +16,17 @@
 </nav>
 
 <div class="container">
-    <!-- Форма за додавање нов корисник -->
+    <!-- Форма за додавање нов корисник (само име, улога и сектор) -->
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-white fw-bold">
-            + Додади нов корисник
+            + Додади нов корисник (Привремена лозинка: 123456)
         </div>
         <div class="card-body">
             <form method="POST" action="{{ url_for('admin_users') }}" class="row g-3">
-                <div class="col-md-3">
+                <div class="col-md-4">
                     <input type="text" name="username" class="form-control" placeholder="Корисничко име (пр. име.презиме)" required>
                 </div>
-                <div class="col-md-3">
-                    <input type="text" name="password" class="form-control" value="123456" placeholder="Лозинка" required>
-                </div>
-                <div class="col-md-3">
+                <div class="col-md-4">
                     <select name="role" class="form-select" required>
                         <option value="employee">Вработен (Employee)</option>
                         <option value="manager">Раководител (Manager)</option>
@@ -37,9 +34,13 @@
                         <option value="admin">Админ (Admin)</option>
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-4">
                     <input type="text" name="sector" class="form-control" placeholder="Сектор (пр. Технички сектор)" required>
                 </div>
+                
+                <!-- Скриена лозинка која автоматски праќа 123456 -->
+                <input type="hidden" name="password" value="123456">
+
                 <div class="col-12">
                     <button type="submit" class="btn btn-success">Зачувај корисник</button>
                 </div>
