@@ -1,13 +1,19 @@
 import os
+import io
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+import openpyxl
+from docx import Document
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "strezevo_helpdesk_secret_key_2026")
 
-# Подесување на базата на податоци (Neon PostgreSQL преку환경 DATABASE_URL, со fallback на локална SQLite)
+# Подесување на базата на податоци (Neon PostgreSQL преку DATABASE_URL, со fallback на SQLite)
 database_url = os.environ.get("DATABASE_URL")
 if database_url:
     if database_url.startswith("postgres://"):
@@ -164,6 +170,94 @@ def update_task(task_id):
     db.session.commit()
     flash("Задачата е успешно ажурирана.", "success")
     return redirect(url_for("index"))
+
+# Рути за Извоз (Excel, Word, PDF)
+@app.route("/export/excel")
+def export_excel():
+    if "username" not in session:
+        return redirect(url_for("login"))
+    
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Задачи"
+
+    headers = ["ID", "Наслов", "Опис", "Раководител", "Сектор", "Вработен", "Статус", "Забелешка", "Датум"]
+    ws.append(headers)
+
+    tasks = Task.query.all()
+    for t in tasks:
+        ws.append([
+            t.id,
+            t.title,
+            t.description or "",
+            t.assigned_to_manager,
+            t.assigned_to_sector,
+            t.assigned_to_employee or "Недоделено",
+            t.status,
+            t.report_note or "",
+            t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ""
+        ])
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", as_attachment=True, download_name="jp_strezevo_zadachi.xlsx")
+
+@app.route("/export/word")
+def export_word():
+    if "username" not in session:
+        return redirect(url_for("login"))
+
+    doc = Document()
+    doc.add_heading("ЈП Стрежево Битола - Извештај за задачи", level=1)
+    doc.add_paragraph(f"Генерирано на: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+
+    tasks = Task.query.all()
+    for t in tasks:
+        p = doc.add_paragraph(style='List Bullet')
+        p.add_run(f"Наслов: {t.title}\n").bold = True
+        p.add_run(f"Опис: {t.description or 'Нема опис'}\n")
+        p.add_run(f"Раководител: {t.assigned_to_manager} | Сектор: {t.assigned_to_sector}\n")
+        p.add_run(f"Вработен: {t.assigned_to_employee or 'Недоделено'} | Статус: {t.status}\n")
+        if t.report_note:
+            p.add_run(f"Забелешка: {t.report_note}\n")
+        p.add_run(f"Датум: {t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ''}\n")
+        doc.add_paragraph("-" * 40)
+
+    output = io.BytesIO()
+    doc.save(output)
+    output.seek(0)
+
+    return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document", as_attachment=True, download_name="jp_strezevo_zadachi.docx")
+
+@app.route("/export/pdf")
+def export_pdf():
+    if "username" not in session:
+        return redirect(url_for("login"))
+
+    output = io.BytesIO()
+    doc = SimpleDocTemplate(output, pagesize=letter)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    elements.append(Paragraph("<b>ЈП Стрежево Битола - Извештај за задачи</b>", styles['Title']))
+    elements.append(Spacer(1, 12))
+
+    tasks = Task.query.all()
+    for t in tasks:
+        task_text = f"<b>Наслов:</b> {t.title}<br/>" \
+                    f"<b>Опис:</b> {t.description or 'Нема опис'}<br/>" \
+                    f"<b>Раководител:</b> {t.assigned_to_manager} | <b>Сектор:</b> {t.assigned_to_sector}<br/>" \
+                    f"<b>Вработен:</b> {t.assigned_to_employee or 'Недоделено'} | <b>Статус:</b> {t.status}<br/>" \
+                    f"<i>Датум: {t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ''}</i><br/>" + "-"*50
+        elements.append(Paragraph(task_text, styles['Normal']))
+        elements.append(Spacer(1, 8))
+
+    doc.build(elements)
+    output.seek(0)
+
+    return send_file(output, mimetype="application/pdf", as_attachment=True, download_name="jp_strezevo_zadachi.pdf")
 
 @app.route("/admin/users", methods=["GET", "POST"])
 def admin_users():
