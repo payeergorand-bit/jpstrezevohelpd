@@ -13,7 +13,6 @@ db_url = os.environ.get("DATABASE_URL")
 if db_url:
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
-    # Принудно додавање на psycopg2 драјверот за да се избегне грешката со недостапен драјвер
     if db_url.startswith("postgresql://") and "postgresql+psycopg2://" not in db_url:
         db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
     
@@ -225,7 +224,7 @@ def update_task(task_id):
         task.report_note = report_note
     if assigned_employee:
         task.assigned_to_employee = assigned_employee
-        task.status = "Проследено до вработен"
+        task.status = "Проследено"
 
     db.session.commit()
     return redirect(url_for("index"))
