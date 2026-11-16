@@ -39,6 +39,7 @@ class Task(db.Model):
     description = db.Column(db.Text, nullable=True)
     assigned_by = db.Column(db.String(80), nullable=False)
     assigned_to_manager = db.Column(db.String(80), nullable=False)
+    assigned_to_employee = db.Column(db.String(80), nullable=True)  # Ново: конкретен вработен
     assigned_to_sector = db.Column(db.String(100), nullable=False)
     status = db.Column(db.String(30), default="Доделено")
     report_note = db.Column(db.Text, nullable=True)
@@ -77,13 +78,30 @@ def index():
     if user.must_change_password:
         return redirect(url_for("change_password"))
 
+    # Филтрирање задачи според улогата
     if user.role in ["director", "admin"]:
         tasks = Task.query.order_by(Task.created_at.desc()).all()
+    elif user.role == "manager":
+        # Раководителот ги гледа задачите за неговиот сектор или доделени нему
+        tasks = Task.query.filter(
+            (Task.assigned_to_manager == user.username) | 
+            (Task.assigned_to_sector == user.sector)
+        ).order_by(Task.created_at.desc()).all()
     else:
-        tasks = Task.query.filter_by(assigned_to_manager=user.username).order_by(Task.created_at.desc()).all()
+        # Вработениот ги гледа само задачите проследени до него
+        tasks = Task.query.filter_by(assigned_to_employee=user.username).order_by(Task.created_at.desc()).all()
 
-    assignable_users = User.query.filter(User.role.in_(["employee", "manager"])).all()
-    return render_template("index.html", user=user, tasks=tasks, managers=assignable_users)
+    # Листа на корисници за доделување (раководители/админи) и вработени во секторот
+    managers = User.query.filter(User.role.in_(["employee", "manager"])).all()
+    sector_employees = User.query.filter_by(sector=user.sector, role="employee").all()
+
+    return render_template(
+        "index.html", 
+        user=user, 
+        tasks=tasks, 
+        managers=managers, 
+        sector_employees=sector_employees
+    )
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -202,12 +220,17 @@ def update_task(task_id):
 
     status = request.form.get("status")
     report_note = request.form.get("report_note")
+    assigned_employee = request.form.get("assigned_to_employee")
 
-    task.status = status
+    if status:
+        task.status = status
     if report_note:
         task.report_note = report_note
-    db.session.commit()
+    if assigned_employee:
+        task.assigned_to_employee = assigned_employee
+        task.status = "Проследено до вработен"
 
+    db.session.commit()
     return redirect(url_for("index"))
 
 
@@ -253,7 +276,6 @@ def admin_users():
                 db.session.commit()
         return redirect(url_for("admin_users"))
 
-    users = User.Template if hasattr(User, 'Template') else User.query.all()
     users = User.query.all()
     return render_template("admin_users.html", user=user, users=users)
 
