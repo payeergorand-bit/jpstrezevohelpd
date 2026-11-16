@@ -39,7 +39,7 @@ class Task(db.Model):
     description = db.Column(db.Text, nullable=True)
     assigned_by = db.Column(db.String(80), nullable=False)
     assigned_to_manager = db.Column(db.String(80), nullable=False)
-    assigned_to_employee = db.Column(db.String(80), nullable=True)  # Ново: конкретен вработен
+    assigned_to_employee = db.Column(db.String(80), nullable=True)
     assigned_to_sector = db.Column(db.String(100), nullable=False)
     status = db.Column(db.String(30), default="Доделено")
     report_note = db.Column(db.Text, nullable=True)
@@ -78,29 +78,22 @@ def index():
     if user.must_change_password:
         return redirect(url_for("change_password"))
 
-    # Филтрирање задачи според улогата
     if user.role in ["director", "admin"]:
         tasks = Task.query.order_by(Task.created_at.desc()).all()
     elif user.role == "manager":
-        # Раководителот ги гледа задачите за неговиот сектор или доделени нему
         tasks = Task.query.filter(
             (Task.assigned_to_manager == user.username) | 
             (Task.assigned_to_sector == user.sector)
         ).order_by(Task.created_at.desc()).all()
     else:
-        # Вработениот ги гледа само задачите проследени до него
         tasks = Task.query.filter_by(assigned_to_employee=user.username).order_by(Task.created_at.desc()).all()
 
-    # Листа на корисници за доделување (раководители/админи) и вработени во секторот
     managers = User.query.filter(User.role.in_(["employee", "manager"])).all()
-    sector_employees = User.query.filter_by(sector=user.sector, role="employee").all()
-
     return render_template(
         "index.html", 
         user=user, 
         tasks=tasks, 
-        managers=managers, 
-        sector_employees=sector_employees
+        managers=managers
     )
 
 
