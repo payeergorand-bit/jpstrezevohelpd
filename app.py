@@ -8,11 +8,15 @@ app.secret_key = os.environ.get(
     "SECRET_KEY", "jpstrezevo_secret_key_change_in_production"
 )
 
-# Database Configuration (Neon PostgreSQL with SSL support)
+# Database Configuration (Neon PostgreSQL with explicit psycopg2 driver & SSL support)
 db_url = os.environ.get("DATABASE_URL")
 if db_url:
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
+    # Принудно додавање на psycopg2 драјверот за да се избегне грешката со недостапен драјвер
+    if db_url.startswith("postgresql://") and "postgresql+psycopg2://" not in db_url:
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    
     if "sslmode" not in db_url:
         separator = "&" if "?" in db_url else "?"
         db_url = f"{db_url}{separator}sslmode=require"
