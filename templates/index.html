@@ -84,7 +84,7 @@
                         <p class="card-text text-muted mb-2">{{ task.description or 'Нема опис.' }}</p>
                         
                         <div class="small text-secondary mb-3">
-                            Доделено на: <strong>{{ task.assigned_to_manager }}</strong> | Сектор: <strong>{{ task.assigned_to_sector }}</strong> | Од: {{ task.assigned_by }} | Датум: {{ task.created_at.strftime('%d.%m.%Y %H:%M') }}
+                            Раководител: <strong>{{ task.assigned_to_manager }}</strong> | Сектор: <strong>{{ task.assigned_to_sector }}</strong> | Од: {{ task.assigned_by }} | Датум: {{ task.created_at.strftime('%d.%m.%Y %H:%M') }}
                             {% if task.assigned_to_employee %}
                                 <br>Проследено до вработен: <span class="badge bg-info text-dark">{{ task.assigned_to_employee }}</span>
                             {% endif %}
@@ -103,13 +103,11 @@
                                 </select>
                             </div>
 
-                            <!-- Паѓачко мени за проследување до вработен (достапно за раководители/админи) -->
+                            <!-- Паѓачко мени за проследување до вработен -->
                             {% if user.role in ['manager', 'admin', 'director'] %}
                             <div class="col-md-4">
                                 <select name="assigned_to_employee" class="form-select form-select-sm">
                                     <option value="">-- Проследи до вработен --</option>
-                                    {% set employees = namespace(list=[]) %}
-                                    <!-- Ги филтрираме вработените што се од истиот сектор -->
                                     {% for emp in managers %}
                                         {% if emp.role == 'employee' and emp.sector == task.assigned_to_sector %}
                                             <option value="{{ emp.username }}" {% if task.assigned_to_employee == emp.username %}selected{% endif %}>{{ emp.username }}</option>
