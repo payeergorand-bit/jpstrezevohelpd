@@ -30,6 +30,7 @@ class User(db.Model):
     password = db.Column(db.String(120), nullable=False)
     role = db.Column(db.String(20), nullable=False)  # admin, director, manager, employee
     sector = db.Column(db.String(100), nullable=False)
+    must_change_password = db.Column(db.Boolean, default=False)
 
 
 class Task(db.Model):
@@ -39,7 +40,7 @@ class Task(db.Model):
     assigned_by = db.Column(db.String(80), nullable=False)
     assigned_to_manager = db.Column(db.String(80), nullable=False)
     assigned_to_sector = db.Column(db.String(100), nullable=False)
-    status = db.Column(db.String(30), default="Доделено")  # Доделено, Во тек, Завршено
+    status = db.Column(db.String(30), default="Доделено")
     report_note = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -54,6 +55,7 @@ with app.app_context():
                 password="adminpassword",
                 role="admin",
                 sector="Централна управа",
+                must_change_password=False,
             )
             db.session.add(admin_user)
             db.session.commit()
@@ -71,6 +73,10 @@ def index():
     if not user:
         session.clear()
         return redirect(url_for("login"))
+
+    # Ако корисникот мора да ја смени лозинката, пренасочи го
+    if user.must_change_password:
+        return redirect(url_for("change_password"))
 
     # Приказ на задачи според улогата
     if user.role in ["director", "admin"]:
@@ -92,11 +98,40 @@ def login():
         user = User.query.filter_by(username=username, password=password).first()
         if user:
             session["username"] = user.username
+            if user.must_change_password:
+                return redirect(url_for("change_password"))
             return redirect(url_for("index"))
         else:
             error = "Невалидно корисничко име или лозинка."
             
     return render_template("login.html", error=error)
+
+
+@app.route("/change_password", methods=["GET", "POST"])
+def change_password():
+    if "username" not in session:
+        return redirect(url_for("login"))
+    
+    user = User.query.filter_by(username=session["username"]).first()
+    if not user:
+        return redirect(url_for("login"))
+
+    error = None
+    if request.method == "POST":
+        new_pass = request.form.get("new_password", "").strip()
+        confirm_pass = request.form.get("confirm_password", "").strip()
+
+        if not new_pass or len(new_pass) < 4:
+            error = "Новата лозинка мора да содржи барем 4 карактери."
+        elif new_pass != confirm_pass:
+            error = "Лозинките не се совпаѓаат."
+        else:
+            user.password = new_pass
+            user.must_change_password = False
+            db.session.commit()
+            return redirect(url_for("index"))
+
+    return render_template("change_password.html", user=user, error=error)
 
 
 @app.route("/signup", methods=["GET", "POST"])
@@ -113,12 +148,11 @@ def signup():
         else:
             try:
                 new_user = User(
-                    username=username, password=password, role=role, sector=sector
+                    username=username, password=password, role=role, sector=sector, must_change_password=False
                 )
                 db.session.add(new_user)
                 db.session.commit()
                 
-                # Автоматска најава веднаш по регистрација
                 session["username"] = new_user.username
                 return redirect(url_for("index"))
             except Exception as e:
@@ -200,6 +234,27 @@ def admin_users():
     user = User.query.filter_by(username=session["username"]).first()
     if not user or user.role != "admin":
         return redirect(url_for("index"))
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        # Стандардна лозинка 123456 и подесено веднаш да мора да ја смени
+        password = request.form.get("password", "123456").strip() or "123456"
+        role = request.form.get("role", "employee").strip()
+        sector = request.form.get("sector", "").strip() or "Централна управа"
+
+        if username:
+            existing_user = User.query.filter_by(username=username).first()
+            if not existing_user:
+                new_u = User(
+                    username=username, 
+                    password=password, 
+                    role=role, 
+                    sector=sector, 
+                    must_change_password=True  # Означено е дека мора да ја смени при прво најавување
+                )
+                db.session.add(new_u)
+                db.session.commit()
+        return redirect(url_for("admin_users"))
 
     users = User.query.all()
     return render_template("admin_users.html", user=user, users=users)
