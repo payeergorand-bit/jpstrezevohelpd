@@ -81,9 +81,15 @@ with app.app_context():
         except Exception as e:
             print(f"Migration note for {col_name}:", e)
 
-    # Креирање на почетен admin корисник ако не постои
-    if not User.query.filter_by(username="admin").first():
-        hashed_password = generate_password_hash("123456")
+    # Ресетирање / Креирање на admin корисник со лозинка 123456
+    admin_user = User.query.filter_by(username="admin").first()
+    hashed_password = generate_password_hash("123456")
+    
+    if admin_user:
+        admin_user.password_hash = hashed_password
+        admin_user.role = "admin"
+        admin_user.must_change_password = False
+    else:
         admin_user = User(
             username="admin",
             password_hash=hashed_password,
@@ -92,7 +98,8 @@ with app.app_context():
             must_change_password=False
         )
         db.session.add(admin_user)
-        db.session.commit()
+    
+    db.session.commit()
 
 # Помошна функција со поддршка за филтрирање по датум и улоги
 def get_tasks_for_export(selected_date=None):
