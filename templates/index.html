@@ -36,7 +36,7 @@
             {% endif %}
         {% endwith %}
 
-        <!-- Филтрирање по датум и Извоз -->
+        <!-- Филтрирај по датум и Извоз -->
         <div class="card shadow-sm mb-4">
             <div class="card-body">
                 <form method="GET" action="{{ url_for('index') }}" class="row g-3 align-items-center">
@@ -63,11 +63,11 @@
             </div>
         </div>
 
-        <!-- Администраторски панел: Додај корисник, промена на улога и ресетирање лозинки -->
+        <!-- Администраторски панел: Додај корисник, промена на улога, ресетирање и бришење -->
         {% if user.role.lower() == 'admin' %}
         <div class="row mb-4">
             <!-- Форма за додавање нов корисник -->
-            <div class="col-md-5">
+            <div class="col-md-4">
                 <div class="card shadow-sm h-100">
                     <div class="card-header bg-secondary text-white"><strong>Додај нов корисник</strong></div>
                     <div class="card-body">
@@ -99,17 +99,18 @@
                 </div>
             </div>
 
-            <!-- Управување со корисници, улоги и ресетирање лозинки -->
-            <div class="col-md-7">
+            <!-- Управување со корисници, улоги, лозинки и бришење -->
+            <div class="col-md-8">
                 <div class="card shadow-sm h-100">
-                    <div class="card-header bg-secondary text-white"><strong>Управување со корисници, улоги и лозинки</strong></div>
+                    <div class="card-header bg-secondary text-white"><strong>Управување со корисници, улоги и бришење</strong></div>
                     <div class="card-body table-responsive" style="max-height: 400px; overflow-y: auto;">
                         <table class="table table-sm table-striped align-middle">
                             <thead>
                                 <tr>
                                     <th>Корисник</th>
                                     <th>Улога</th>
-                                    <th>Акција</th>
+                                    <th>Акција (Лозинка)</th>
+                                    <th>Бришење</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -118,7 +119,7 @@
                                     <td>{{ u.username }}</td>
                                     <td>
                                         <form method="POST" action="{{ url_for('update_user_role', user_id=u.id) }}" class="d-flex align-items-center gap-1">
-                                            <select name="new_role" class="form-select form-select-sm" style="width: 130px;">
+                                            <select name="new_role" class="form-select form-select-sm" style="width: 120px;">
                                                 <option value="employee" {% if u.role == 'employee' %}selected{% endif %}>Вработен</option>
                                                 <option value="manager" {% if u.role == 'manager' %}selected{% endif %}>Раководител</option>
                                                 <option value="director" {% if u.role == 'director' %}selected{% endif %}>Директор</option>
@@ -129,7 +130,12 @@
                                     </td>
                                     <td>
                                         <form method="POST" action="{{ url_for('reset_password', user_id=u.id) }}" style="display:inline;">
-                                            <button type="submit" class="btn btn-warning btn-sm" onclick="return confirm('Дали сте сигурни дека сакате да ја ресетирате лозинката на овој корисник на 123456?')">Ресетирај пасс</button>
+                                            <button type="submit" class="btn btn-warning btn-sm" onclick="return confirm('Дали сте сигурни дека сакате да ја ресетирате лозинката?')">Ресетирај pass</button>
+                                        </form>
+                                    </td>
+                                    <td>
+                                        <form method="POST" action="{{ url_for('delete_user', user_id=u.id) }}" style="display:inline;">
+                                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Дали сте сигурни дека сакате да го избришете корисникот {{ u.username }}?')">Избриши</button>
                                         </form>
                                     </td>
                                 </tr>
