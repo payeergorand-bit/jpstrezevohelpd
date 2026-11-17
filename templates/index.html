@@ -5,75 +5,74 @@
     <title>ЈП Стрежево Битола - HelpDesk</title>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
 </head>
 <body class="bg-light">
     <div class="container mt-4">
-        
         <!-- Горна лента со информации за корисникот -->
-        <div class="row align-items-center mb-4">
-            <div class="col-md-6">
-                <h2>Добредојде, {{ user.username }} (Улога: {{ user.role }})</h2>
-                <p class="text-muted">Сектор: {{ user.sector or 'Сите сектори' }}</p>
-            </div>
-            <div class="col-md-6 text-md-end">
-                <a href="{{ url_for('logout') }}" class="btn btn-secondary btn-sm">Одјави се</a>
+        <div class="card shadow-sm mb-4">
+            <div class="card-body d-flex justify-content-between align-items-center">
+                <div>
+                    <h4 class="mb-0">ЈП Стрежево Битола - HelpDesk</h4>
+                    <p class="text-muted mb-0">Добредојде: <strong>{{ user.username }}</strong> (Улога: <span class="badge bg-secondary">{{ user.role }}</span>, Сектор: {{ user.sector or 'Сите' }})</p>
+                </div>
+                <div>
+                    <a href="{{ url_for('change_password') }}" class="btn btn-outline-warning btn-sm me-2">Промени лозинка</a>
+                    <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm">Одјава</a>
+                </div>
             </div>
         </div>
 
-        <!-- КАЛЕНДАР И ИЗВОЗ ПО ДАТУМ (Само за админ, директор и раководител) -->
-        {% if user.role and user.role.lower() in ['admin', 'director', 'manager', 'direktor'] %}
-        <div class="card mb-4 shadow-sm border-primary">
-            <div class="card-body bg-white">
-                <h5 class="card-title text-primary mb-3">📅 Календар и извештај по ден (Кој што сработил)</h5>
+        <!-- КАЛЕНДАР ЗА ФИЛТРИРАЊЕ И КОПЧИЊА ЗА ИЗВОЗ (Достапно за Admin, Director, Manager) -->
+        {% if user.role.lower() in ['admin', 'director', 'manager'] %}
+        <div class="card shadow-sm mb-4">
+            <div class="card-body bg-white rounded">
                 <form method="GET" action="{{ url_for('index') }}" class="row g-3 align-items-center">
                     <div class="col-md-4">
-                        <label for="date" class="form-label fw-bold">Избери датум:</label>
-                        <input type="date" id="date" name="date" class="form-control" value="{{ selected_date or '' }}" onchange="this.form.submit()">
+                        <label for="date" class="form-label fw-bold">Филтрирај задачи по датум:</label>
+                        <input type="date" id="date" name="date" class="form-control" value="{{ selected_date or '' }}">
                     </div>
-                    <div class="col-md-8 text-md-end mt-4">
-                        <div class="btn-group" role="group" aria-label="Извоз по датум">
-                            <a href="{{ url_for('export_excel', date=selected_date) }}" class="btn btn-success btn-sm">📊 Извези Excel</a>
-                            <a href="{{ url_for('export_word', date=selected_date) }}" class="btn btn-primary btn-sm">📝 Извези Word</a>
-                            <a href="{{ url_for('export_pdf', date=selected_date) }}" class="btn btn-danger btn-sm">📄 Извези PDF</a>
-                            {% if selected_date %}
-                            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm">Ресетирај филтер</a>
-                            {% endif %}
-                        </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary me-2 w-100"><i class="bi bi-filter"></i> Филтрирај</button>
+                        {% if selected_date %}
+                            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary w-100">Ресетирај</a>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="col-md-5 text-end d-flex justify-content-end align-items-end gap-2">
+                        <span class="text-muted small align-self-center">Извоз:</span>
+                        <a href="{{ url_for('export_excel', date=selected_date) }}" class="btn btn-success btn-sm"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+                        <a href="{{ url_for('export_word', date=selected_date) }}" class="btn btn-info btn-sm text-white"><i class="bi bi-file-earmark-word"></i> Word</a>
+                        <a href="{{ url_for('export_pdf', date=selected_date) }}" class="btn btn-danger btn-sm"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
                     </div>
                 </form>
             </div>
         </div>
         {% endif %}
 
-        <hr>
-
-        <!-- Форма за Креирање нова задача (За админ, директор, раководител) -->
-        {% if user.role and user.role.lower() in ['admin', 'director', 'manager', 'direktor'] %}
-        <div class="card mb-4 shadow-sm">
-            <div class="card-header bg-dark text-white">
-                <h5 class="mb-0">Креирај нова задача</h5>
-            </div>
+        <!-- Форма за додавање задача (Само за Admin, Director, Manager) -->
+        {% if user.role.lower() in ['admin', 'director', 'manager'] %}
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-primary text-white">Креирај нова задача</div>
             <div class="card-body">
                 <form method="POST" action="{{ url_for('add_task') }}">
                     <div class="mb-3">
-                        <label for="title" class="form-label">Наслов на задачата</label>
-                        <input type="text" class="form-control" id="title" name="title" required>
+                        <label class="form-label">Наслов на задачата</label>
+                        <input type="text" name="title" class="form-control" required>
                     </div>
                     <div class="mb-3">
-                        <label for="description" class="form-label">Опис / Детали</label>
-                        <textarea class="form-control" id="description" name="description" rows="2"></textarea>
+                        <label class="form-label">Опис</label>
+                        <textarea name="description" class="form-control" rows="2"></textarea>
                     </div>
                     <div class="mb-3">
-                        <label for="manager_username" class="form-label">Додели до раководител / сектор:</label>
-                        <select class="form-select" id="manager_username" name="manager_username" required>
-                            <option value="">-- Избери раководител --</option>
+                        <label class="form-label">Избери Раководител / Вработен за секторот</label>
+                        <select name="manager_username" class="form-select" required>
                             {% for m in managers %}
-                                <option value="{{ m.username }}">{{ m.username }} ({{ m.sector }})</option>
+                                <option value="{{ m.username }}">{{ m.username }} ({{ m.sector or 'Општ' }})</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <button type="submit" class="btn btn-primary">Додели задача</button>
+                    <button type="submit" class="btn btn-success">Додели задача</button>
                 </form>
             </div>
         </div>
@@ -81,8 +80,8 @@
 
         <!-- Листа на задачи -->
         <div class="card shadow-sm">
-            <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Листа на задачи {% if selected_date %} за датум: {{ selected_date }}{% endif %}</h5>
+            <div class="card-header bg-dark text-white">
+                Листа на задачи {% if selected_date %} за датум: {{ selected_date }}{% endif %}
             </div>
             <div class="card-body">
                 {% if tasks %}
@@ -91,11 +90,10 @@
                             <thead>
                                 <tr>
                                     <th>ID</th>
-                                    <th>Наслов</th>
+                                    <th>Наслов и опис</th>
                                     <th>Раководител / Сектор</th>
                                     <th>Вработен</th>
-                                    <th>Статус</th>
-                                    <th>Датум</th>
+                                    <th>Статус и Забелешка</th>
                                     <th>Акција</th>
                                 </tr>
                             </thead>
@@ -105,40 +103,21 @@
                                     <td>{{ t.id }}</td>
                                     <td>
                                         <strong>{{ t.title }}</strong><br>
-                                        <small class="text-muted">{{ t.description or 'Нема опис' }}</small>
-                                        {% if t.report_note %}
-                                            <br><span class="text-success small"><strong>Извештај:</strong> {{ t.report_note }}</span>
-                                        {% endif %}
+                                        <small class="text-muted">{{ t.description }}</small>
                                     </td>
-                                    <td>{{ t.assigned_to_manager }} <br><span class="badge bg-info text-dark">{{ t.assigned_to_sector }}</span></td>
+                                    <td>{{ t.assigned_to_manager }}<br><span class="badge bg-light text-dark">{{ t.assigned_to_sector }}</span></td>
                                     <td>{{ t.assigned_to_employee or 'Недоделено' }}</td>
                                     <td>
-                                        <span class="badge 
-                                            {% if t.status == 'Завршено' %}bg-success
-                                            {% elif t.status == 'Во тек' %}bg-warning text-dark
-                                            {% elif t.status == 'Проследено' %}bg-primary
-                                            {% else %}bg-secondary{% endif %}">
-                                            {{ t.status }}
-                                        </span>
+                                        <form method="POST" action="{{ url_for('update_task', task_id=t.id) }}">
+                                            <select name="status" class="form-select form-select-sm mb-1" onchange="this.form.submit()">
+                                                <option value="Доделено" {% if t.status == 'Доделено' %}selected{% endif %}>Доделено</option>
+                                                <option value="Во работа" {% if t.status == 'Во работа' %}selected{% endif %}>Во работа</option>
+                                                <option value="Завршено" {% if t.status == 'Завршено' %}selected{% endif %}>Завршено</option>
+                                            </select>
+                                            <input type="text" name="report_note" class="form-control form-control-sm" value="{{ t.report_note or '' }}" placeholder="Забелешка...">
                                     </td>
-                                    <td>{{ t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else '' }}</td>
                                     <td>
-                                        <!-- Форма за ажурирање на статус / забелешка -->
-                                        <form method="POST" action="{{ url_for('update_task', task_id=t.id) }}" class="row g-1">
-                                            <div class="col-12 mb-1">
-                                                <select name="status" class="form-select form-select-sm">
-                                                    <option value="Доделено" {% if t.status == 'Доделено' %}selected{% endif %}>Доделено</option>
-                                                    <option value="Проследено" {% if t.status == 'Проследено' %}selected{% endif %}>Проследено</option>
-                                                    <option value="Во тек" {% if t.status == 'Во тек' %}selected{% endif %}>Во тек</option>
-                                                    <option value="Завршено" {% if t.status == 'Завршено' %}selected{% endif %}>Завршено</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-12 mb-1">
-                                                <input type="text" name="report_note" class="form-control form-control-sm" placeholder="Внеси забелешка..." value="{{ t.report_note or '' }}">
-                                            </div>
-                                            <div class="col-12">
-                                                <button type="submit" class="btn btn-sm btn-dark w-100">Ажурирај</button>
-                                            </div>
+                                            <button type="submit" class="btn btn-sm btn-outline-primary">Зачувај</button>
                                         </form>
                                     </td>
                                 </tr>
@@ -151,7 +130,6 @@
                 {% endif %}
             </div>
         </div>
-
     </div>
 </body>
 </html>
