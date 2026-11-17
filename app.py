@@ -81,23 +81,26 @@ with app.app_context():
         except Exception as e:
             print(f"Migration note for {col_name}:", e)
 
-    # Ресетирање / Креирање на admin корисник со лозинка 123456
-    admin_user = User.query.filter_by(username="admin").first()
-    hashed_password = generate_password_hash("123456")
-    
-    if admin_user:
-        admin_user.password_hash = hashed_password
-        admin_user.role = "admin"
-        admin_user.must_change_password = False
-    else:
-        admin_user = User(
-            username="admin",
-            password_hash=hashed_password,
-            role="admin",
-            sector="Централна управа",
-            must_change_password=False
-        )
-        db.session.add(admin_user)
+    # Список на основни корисници кои се креираат само ако не постојат (не се бришат постоечките)
+    default_users = [
+        {"username": "admin", "role": "admin", "sector": "Централна управа", "pwd": "123456", "force_change": False},
+        {"username": "вера.бешлиевска", "role": "director", "sector": "Дирекција", "pwd": "123456", "force_change": False},
+        {"username": "владимир.крстевски", "role": "manager", "sector": "Технички сектор", "pwd": "123456", "force_change": False},
+        {"username": "васко.колевски", "role": "employee", "sector": "Технички сектор", "pwd": "123456", "force_change": False},
+        {"username": "горан.димовски", "role": "employee", "sector": "Технички сектор", "pwd": "123456", "force_change": False}
+    ]
+
+    for u_data in default_users:
+        existing = User.query.filter_by(username=u_data["username"]).first()
+        if not existing:
+            new_u = User(
+                username=u_data["username"],
+                password_hash=generate_password_hash(u_data["pwd"]),
+                role=u_data["role"],
+                sector=u_data["sector"],
+                must_change_password=u_data["force_change"]
+            )
+            db.session.add(new_u)
     
     db.session.commit()
 
