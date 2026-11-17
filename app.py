@@ -66,22 +66,21 @@ class Task(db.Model):
 with app.app_context():
     db.create_all()
     
-    # Автоматско безбедно додавање на сите потребни колони доколку недостигаат во базата
-    columns_to_add = [
-        ('password_hash', "VARCHAR(256) DEFAULT ''"),
-        ('role', "VARCHAR(20) DEFAULT 'employee'"),
-        ('sector', "VARCHAR(100) DEFAULT 'Општ сектор'"),
-        ('must_change_password', 'BOOLEAN DEFAULT TRUE')
-    ]
-    
-    for col_name, col_type in columns_to_add:
-        try:
-            with db.engine.begin() as conn:
-                conn.execute(db.text(f'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS {col_name} {col_type};'))
-        except Exception as e:
-            print(f"Migration note for {col_name}:", e)
+    # Безбедно додавање на колони преку raw SQL конекција
+    try:
+        connection = db.engine.raw_connection()
+        cursor = connection.cursor()
+        cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS password_hash VARCHAR(256) DEFAULT \'\';')
+        cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT \'employee\';')
+        cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS sector VARCHAR(100) DEFAULT \'Општ сектор\';')
+        cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT TRUE;')
+        connection.commit()
+        cursor.close()
+        connection.close()
+    except Exception as e:
+        print("Migration note:", e)
 
-    # Список на основни корисници кои се креираат само ако не постојат (не се бришат постоечките)
+    # Список на основни корисници кои се креираат само ако не постојат
     default_users = [
         {"username": "admin", "role": "admin", "sector": "Централна управа", "pwd": "123456", "force_change": False},
         {"username": "вера.бешлиевска", "role": "director", "sector": "Дирекција", "pwd": "123456", "force_change": False},
