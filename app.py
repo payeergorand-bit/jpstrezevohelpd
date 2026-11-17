@@ -66,14 +66,22 @@ class Task(db.Model):
 with app.app_context():
     db.create_all()
     
-    # 1. Безбедно додавање на колони ПРВАТА работа пред било каков Query
-    try:
-        with db.engine.begin() as conn:
-            conn.execute(db.text('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT TRUE;'))
-    except Exception as e:
-        print("Migration note:", e)
+    # Автоматско безбедно додавање на сите потребни колони доколку недостигаат во базата
+    columns_to_add = [
+        ('password_hash', "VARCHAR(256) DEFAULT ''"),
+        ('role', "VARCHAR(20) DEFAULT 'employee'"),
+        ('sector', "VARCHAR(100) DEFAULT 'Општ сектор'"),
+        ('must_change_password', 'BOOLEAN DEFAULT TRUE')
+    ]
+    
+    for col_name, col_type in columns_to_add:
+        try:
+            with db.engine.begin() as conn:
+                conn.execute(db.text(f'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS {col_name} {col_type};'))
+        except Exception as e:
+            print(f"Migration note for {col_name}:", e)
 
-    # 2. Креирање на почетен admin корисник ако не постои
+    # Креирање на почетен admin корисник ако не постои
     if not User.query.filter_by(username="admin").first():
         hashed_password = generate_password_hash("123456")
         admin_user = User(
