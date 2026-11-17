@@ -66,14 +66,17 @@ class Task(db.Model):
 with app.app_context():
     db.create_all()
     
-    # Безбедно додавање на колони преку raw SQL конекција
+    # Безбедно додавање/решавање на колоните во PostgreSQL за да се избегнат конфликти со стари колони
     try:
         connection = db.engine.raw_connection()
         cursor = connection.cursor()
+        # Додавање на нови колони ако недостасуваат
         cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS password_hash VARCHAR(256) DEFAULT \'\';')
         cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT \'employee\';')
         cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS sector VARCHAR(100) DEFAULT \'Општ сектор\';')
         cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT TRUE;')
+        # Дозволување на старата колона 'password' да биде NULL за да не предизвикува грешка
+        cursor.execute('ALTER TABLE "user" ALTER COLUMN password DROP NOT NULL;')
         connection.commit()
         cursor.close()
         connection.close()
@@ -100,6 +103,10 @@ with app.app_context():
                 must_change_password=u_data["force_change"]
             )
             db.session.add(new_u)
+        else:
+            # Ажурирај го хешот на лозинката за сигурност ако веќе постои
+            if not existing.password_hash:
+                existing.password_hash = generate_password_hash(u_data["pwd"])
     
     db.session.commit()
 
