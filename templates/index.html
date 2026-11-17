@@ -17,12 +17,14 @@
             </div>
             
             <div class="col-md-6 text-md-end">
-                <!-- Овде се целосните копчиња за извоз во Excel, Word и PDF -->
-                <div class="btn-group" role="group" aria-label="Извоз на податоци">
+                <!-- Копчиња за извоз - се прикажуваат само за admin, director и manager -->
+                {% if user.role in ['admin', 'director', 'manager'] %}
+                <div class="btn-group mb-2 mb-md-0" role="group" aria-label="Извоз на податоци">
                     <a href="{{ url_for('export_excel') }}" class="btn btn-success btn-sm">Преземи во Excel (.xlsx)</a>
                     <a href="{{ url_for('export_word') }}" class="btn btn-primary btn-sm">Преземи во Word (.docx)</a>
                     <a href="{{ url_for('export_pdf') }}" class="btn btn-danger btn-sm">Преземи во PDF (.pdf)</a>
                 </div>
+                {% endif %}
                 
                 <!-- Копче за одјава -->
                 <a href="{{ url_for('logout') }}" class="btn btn-secondary btn-sm ms-2">Одјави се</a>
