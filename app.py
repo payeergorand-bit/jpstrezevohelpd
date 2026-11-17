@@ -286,10 +286,31 @@ def update_user_role(user_id):
     if new_role in ["employee", "manager", "director", "admin"]:
         target_user.role = new_role
         db.session.commit()
-        flash(f"Ulogata za korisnikot {target_user.username} e uspesno smeneta vo {new_role}.", "success")
+        flash(f"Улогата за корисникот {target_user.username} е успешно изменета.", "success")
     else:
-        flash("Nevalidna uloga.", "danger")
+        flash("Невалидна улога.", "danger")
         
+    return redirect(url_for("index"))
+
+@app.route("/delete_user/<int:user_id>", methods=["POST"])
+def delete_user(user_id):
+    if "username" not in session:
+        return redirect(url_for("login"))
+    admin_user = User.query.filter_by(username=session["username"]).first()
+    if not admin_user or admin_user.role.lower() != "admin":
+        flash("Немате администраторски права.", "danger")
+        return redirect(url_for("index"))
+
+    target_user = User.query.get_or_404(user_id)
+    
+    # Спречување администраторот да се избрише сам себе
+    if target_user.username == admin_user.username:
+        flash("Не можете да се избришете самите себе!", "danger")
+        return redirect(url_for("index"))
+
+    db.session.delete(target_user)
+    db.session.commit()
+    flash(f"Корисникот {target_user.username} е успешно избришан од системот.", "success")
     return redirect(url_for("index"))
 
 @app.route("/add_task", methods=["POST"])
@@ -318,7 +339,7 @@ def add_task():
     )
     db.session.add(new_task)
     db.session.commit()
-    flash("Zadacata e uspesno kreirana i dodelena.", "success")
+    flash("Задацата е успешно креирана и доделена.", "success")
     return redirect(url_for("index"))
 
 @app.route("/update_task/<int:task_id>", methods=["POST"])
@@ -339,20 +360,20 @@ def update_task(task_id):
         task.report_note = report_note
 
     db.session.commit()
-    flash("Zadacata e uspesno azurirana.", "success")
+    flash("Задацата е успешно ажурирана.", "success")
     return redirect(url_for("index"))
 
 # ИЗВОЗ ВО EXCEL
 @app.route("/export/excel")
 def export_excel():
     if not openpyxl:
-        flash("Excel modulot ne e dostapen na serverot.", "danger")
+        flash("Excel модулот не е достапен на серверот.", "danger")
         return redirect(url_for("index"))
         
     selected_date = request.args.get("date")
     tasks = get_tasks_for_export(selected_date)
     if tasks is None:
-        flash("Nemate dozvola za izvoz na podatoci.", "danger")
+        flash("Немате дозвола за извоз на податоци.", "danger")
         return redirect(url_for("index"))
 
     wb = openpyxl.Workbook()
@@ -383,28 +404,28 @@ def export_excel():
 @app.route("/export/word")
 def export_word():
     if not Document:
-        flash("Word modulot ne e dostapen na serverot.", "danger")
+        flash("Word модулот не е достапен на серверот.", "danger")
         return redirect(url_for("index"))
 
     selected_date = request.args.get("date")
     tasks = get_tasks_for_export(selected_date)
     if tasks is None:
-        flash("Nemate dozvola za izvoz na podatoci.", "danger")
+        flash("Немате дозвола за извоз на податоци.", "danger")
         return redirect(url_for("index"))
 
     doc = Document()
-    title_suffix = f" za datum: {selected_date}" if selected_date else ""
-    doc.add_heading(f"JP Strezevo Bitola - Izvestaj za zadaci{title_suffix}", level=1)
+    title_suffix = f" за датум: {selected_date}" if selected_date else ""
+    doc.add_heading(f"ЈП Стрежево Битола - Извештај за задачи{title_suffix}", level=1)
     
     for t in tasks:
         p = doc.add_paragraph(style='List Bullet')
-        p.add_run(f"Naslov: {t.title}\n").bold = True
-        p.add_run(f"Opis: {t.description or 'Nema opis'}\n")
-        p.add_run(f"Rakovoditel: {t.assigned_to_manager} | Sektor: {t.assigned_to_sector}\n")
-        p.add_run(f"Vraboten: {t.assigned_to_employee or 'Nedodeleno'} | Status: {t.status}\n")
+        p.add_run(f"Наслов: {t.title}\n").bold = True
+        p.add_run(f"Опис: {t.description or 'Нема опис'}\n")
+        p.add_run(f"Раководител: {t.assigned_to_manager} | Сектор: {t.assigned_to_sector}\n")
+        p.add_run(f"Вработен: {t.assigned_to_employee or 'Недоделено'} | Статус: {t.status}\n")
         if t.report_note:
-            p.add_run(f"Zabeleska: {t.report_note}\n")
-        p.add_run(f"Datum: {t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ''}\n")
+            p.add_run(f"Забелешка: {t.report_note}\n")
+        p.add_run(f"Датум: {t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ''}\n")
         doc.add_paragraph("-" * 40)
 
     output = io.BytesIO()
@@ -417,13 +438,13 @@ def export_word():
 @app.route("/export/pdf")
 def export_pdf():
     if not REPORTLAB_AVAILABLE:
-        flash("PDF modulot ne e dostapen na serverot.", "danger")
+        flash("PDF модулот не е достапен на серверот.", "danger")
         return redirect(url_for("index"))
 
     selected_date = request.args.get("date")
     tasks = get_tasks_for_export(selected_date)
     if tasks is None:
-        flash("Nemate dozvola za izvoz na podatoci.", "danger")
+        flash("Немате дозвола за извоз на податоци.", "danger")
         return redirect(url_for("index"))
 
     output = io.BytesIO()
@@ -445,18 +466,18 @@ def export_pdf():
     title_style = ParagraphStyle("CyrillicTitle", parent=styles["Title"], fontName=font_name, fontSize=14, leading=18)
 
     elements = []
-    title_text = f"JP Strezevo - Izvestaj ({selected_date})" if selected_date else "JP Strezevo Bitola - Izvestaj za zadaci"
+    title_text = f"ЈП Стрежево - Извештај ({selected_date})" if selected_date else "ЈП Стрежево Битола - Извештај за задачи"
     elements.append(Paragraph(title_text, title_style))
     elements.append(Spacer(1, 10))
 
     for t in tasks:
         task_text = (
-            f"<b>Naslov:</b> {t.title}<br/>"
-            f"<b>Opis:</b> {t.description or 'Nema'}<br/>"
-            f"<b>Rakovoditel:</b> {t.assigned_to_manager} | <b>Sektor:</b> {t.assigned_to_sector}<br/>"
-            f"<b>Vraboten:</b> {t.assigned_to_employee or 'Nedodeleno'} | <b>Status:</b> {t.status}<br/>"
-            f"<b>Zabeleska:</b> {t.report_note or '-'}<br/>"
-            f"<i>Datum: {t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ''}</i><br/>" + "-"*50
+            f"<b>Наслов:</b> {t.title}<br/>"
+            f"<b>Опис:</b> {t.description or 'Нема'}<br/>"
+            f"<b>Раководител:</b> {t.assigned_to_manager} | <b>Сектор:</b> {t.assigned_to_sector}<br/>"
+            f"<b>Вработен:</b> {t.assigned_to_employee or 'Недоделено'} | <b>Статус:</b> {t.status}<br/>"
+            f"<b>Забелешка:</b> {t.report_note or '-'}<br/>"
+            f"<i>Датум: {t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ''}</i><br/>" + "-"*50
         )
         elements.append(Paragraph(task_text, normal_style))
         elements.append(Spacer(1, 6))
