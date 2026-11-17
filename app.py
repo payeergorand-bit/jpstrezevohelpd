@@ -8,7 +8,9 @@ import openpyxl
 from docx import Document
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "strezevo_helpdesk_secret_key_2026")
@@ -171,12 +173,31 @@ def update_task(task_id):
     flash("Задачата е успешно ажурирана.", "success")
     return redirect(url_for("index"))
 
-# Рути за Извоз (Excel, Word, PDF)
+# Помошна функција за проверка на дозвола и филтрирање при извоз
+def get_tasks_for_export():
+    if "username" not in session:
+        return None
+    user = User.query.filter_by(username=session["username"]).first()
+    if not user or user.role not in ["admin", "director", "manager"]:
+        return None
+
+    if user.role in ["admin", "director"]:
+        return Task.query.order_by(Task.created_at.desc()).all()
+    elif user.role == "manager":
+        return Task.query.filter(
+            (Task.assigned_to_manager == user.username) |
+            (Task.assigned_to_sector == user.sector)
+        ).order_by(Task.created_at.desc()).all()
+    return []
+
+# 1. ИЗВОЗ ВО EXCEL
 @app.route("/export/excel")
 def export_excel():
-    if "username" not in session:
-        return redirect(url_for("login"))
-    
+    tasks = get_tasks_for_export()
+    if tasks is None:
+        flash("Немате дозвола за извоз на податоци.", "danger")
+        return redirect(url_for("index"))
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Задачи"
@@ -184,7 +205,9 @@ def export_excel():
     headers = ["ID", "Наслов", "Опис", "Раководител", "Сектор", "Вработен", "Статус", "Забелешка", "Датум"]
     ws.append(headers)
 
-    tasks = Task.query.all()
+    for cell in ws[1]:
+        cell.font = openpyxl.styles.Font(bold=True)
+
     for t in tasks:
         ws.append([
             t.id,
@@ -198,22 +221,38 @@ def export_excel():
             t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ""
         ])
 
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column_letter
+        for cell in col:
+            val = str(cell.value or "")
+            if len(val) > max_length:
+                max_length = len(val)
+        ws.column_dimensions[column].width = min(max_length + 4, 50)
+
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
 
-    return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", as_attachment=True, download_name="jp_strezevo_zadachi.xlsx")
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name="jp_strezevo_zadachi.xlsx"
+    )
 
+# 2. ИЗВОЗ ВО WORD
 @app.route("/export/word")
 def export_word():
-    if "username" not in session:
-        return redirect(url_for("login"))
+    tasks = get_tasks_for_export()
+    if tasks is None:
+        flash("Немате дозвола за извоз на податоци.", "danger")
+        return redirect(url_for("index"))
 
     doc = Document()
     doc.add_heading("ЈП Стрежево Битола - Извештај за задачи", level=1)
     doc.add_paragraph(f"Генерирано на: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
 
-    tasks = Task.query.all()
     for t in tasks:
         p = doc.add_paragraph(style='List Bullet')
         p.add_run(f"Наслов: {t.title}\n").bold = True
@@ -229,35 +268,79 @@ def export_word():
     doc.save(output)
     output.seek(0)
 
-    return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document", as_attachment=True, download_name="jp_strezevo_zadachi.docx")
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        as_attachment=True,
+        download_name="jp_strezevo_zadachi.docx"
+    )
 
+# 3. ИЗВОЗ ВО PDF
 @app.route("/export/pdf")
 def export_pdf():
-    if "username" not in session:
-        return redirect(url_for("login"))
+    tasks = get_tasks_for_export()
+    if tasks is None:
+        flash("Немате дозвола за извоз на податоци.", "danger")
+        return redirect(url_for("index"))
 
     output = io.BytesIO()
     doc = SimpleDocTemplate(output, pagesize=letter)
     styles = getSampleStyleSheet()
+
+    font_name = "Helvetica"
+    dejavu_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "static/fonts/DejaVuSans.ttf",
+        "C:\\Windows\\Fonts\\arial.ttf"
+    ]
+    for path in dejavu_paths:
+        if os.path.exists(path):
+            pdfmetrics.registerFont(TTFont("CustomCyrillic", path))
+            font_name = "CustomCyrillic"
+            break
+
+    title_style = ParagraphStyle(
+        "CyrillicTitle",
+        parent=styles["Title"],
+        fontName=font_name,
+        fontSize=16,
+        leading=20
+    )
+    normal_style = ParagraphStyle(
+        "CyrillicNormal",
+        parent=styles["Normal"],
+        fontName=font_name,
+        fontSize=10,
+        leading=14
+    )
+
     elements = []
+    elements.append(Paragraph("ЈП Стрежево Битола - Извештај за задачи", title_style))
+    elements.append(Paragraph(f"Генерирано на: {datetime.now().strftime('%d.%m.%Y %H:%M')}", normal_style))
+    elements.append(Spacer(1, 14))
 
-    elements.append(Paragraph("<b>ЈП Стрежево Битола - Извештај за задачи</b>", styles['Title']))
-    elements.append(Spacer(1, 12))
-
-    tasks = Task.query.all()
     for t in tasks:
-        task_text = f"<b>Наслов:</b> {t.title}<br/>" \
-                    f"<b>Опис:</b> {t.description or 'Нема опис'}<br/>" \
-                    f"<b>Раководител:</b> {t.assigned_to_manager} | <b>Сектор:</b> {t.assigned_to_sector}<br/>" \
-                    f"<b>Вработен:</b> {t.assigned_to_employee or 'Недоделено'} | <b>Статус:</b> {t.status}<br/>" \
-                    f"<i>Датум: {t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ''}</i><br/>" + "-"*50
-        elements.append(Paragraph(task_text, styles['Normal']))
+        task_text = (
+            f"Наслов: {t.title}<br/>"
+            f"Опис: {t.description or 'Нема опис'}<br/>"
+            f"Раководител: {t.assigned_to_manager} | Сектор: {t.assigned_to_sector}<br/>"
+            f"Вработен: {t.assigned_to_employee or 'Недоделено'} | Статус: {t.status}<br/>"
+            f"Забелешка: {t.report_note or '-'}<br/>"
+            f"Датум: {t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ''}<br/>"
+            + "-" * 65
+        )
+        elements.append(Paragraph(task_text, normal_style))
         elements.append(Spacer(1, 8))
 
     doc.build(elements)
     output.seek(0)
 
-    return send_file(output, mimetype="application/pdf", as_attachment=True, download_name="jp_strezevo_zadachi.pdf")
+    return send_file(
+        output,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name="jp_strezevo_zadachi.pdf"
+    )
 
 @app.route("/admin/users", methods=["GET", "POST"])
 def admin_users():
