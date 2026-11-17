@@ -4,13 +4,27 @@ from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
-import openpyxl
-from docx import Document
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
+
+# Безбедно вчитување на библиотеките за извоз
+try:
+    import openpyxl
+except ImportError:
+    openpyxl = None
+
+try:
+    from docx import Document
+except ImportError:
+    Document = None
+
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "strezevo_helpdesk_secret_key_2026")
@@ -45,7 +59,7 @@ class Task(db.Model):
     assigned_to_manager = db.Column(db.String(80), nullable=False)
     assigned_to_sector = db.Column(db.String(100), nullable=False)
     assigned_to_employee = db.Column(db.String(80), nullable=True)
-    status = db.Column(db.String(30), default='Доделено')  # Доделено, Проследено, Во тек, Завршено
+    status = db.Column(db.String(30), default='Доделено')
     report_note = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -210,9 +224,13 @@ def update_task(task_id):
     flash("Задачата е успешно ажурирана.", "success")
     return redirect(url_for("index"))
 
-# 1. ИЗВОЗ ВО EXCEL (со поддршка за датум)
+# 1. ИЗВОЗ ВО EXCEL
 @app.route("/export/excel")
 def export_excel():
+    if not openpyxl:
+        flash("Excel модулот не е достапен на серверот.", "danger")
+        return redirect(url_for("index"))
+        
     selected_date = request.args.get("date")
     tasks = get_tasks_for_export(selected_date)
     if tasks is None:
@@ -237,24 +255,19 @@ def export_excel():
             t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ""
         ])
 
-    for col in ws.columns:
-        max_length = 0
-        column = col[0].column_letter
-        for cell in col:
-            val = str(cell.value or "")
-            if len(val) > max_length:
-                max_length = len(val)
-        ws.column_dimensions[column].width = min(max_length + 4, 50)
-
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
     filename = f"izvestaj_{selected_date}.xlsx" if selected_date else "jp_strezevo_zadachi.xlsx"
     return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", as_attachment=True, download_name=filename)
 
-# 2. ИЗВОЗ ВО WORD (со поддршка за датум)
+# 2. ИЗВОЗ ВО WORD
 @app.route("/export/word")
 def export_word():
+    if not Document:
+        flash("Word модулот не е достапен на серверот.", "danger")
+        return redirect(url_for("index"))
+
     selected_date = request.args.get("date")
     tasks = get_tasks_for_export(selected_date)
     if tasks is None:
@@ -282,9 +295,13 @@ def export_word():
     filename = f"izvestaj_{selected_date}.docx" if selected_date else "jp_strezevo_zadachi.docx"
     return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document", as_attachment=True, download_name=filename)
 
-# 3. ИЗВОЗ ВО PDF (со поддршка за кирилица и датум)
+# 3. ИЗВОЗ ВО PDF
 @app.route("/export/pdf")
 def export_pdf():
+    if not REPORTLAB_AVAILABLE:
+        flash("PDF модулот не е достапен на серверот.", "danger")
+        return redirect(url_for("index"))
+
     selected_date = request.args.get("date")
     tasks = get_tasks_for_export(selected_date)
     if tasks is None:
@@ -298,8 +315,7 @@ def export_pdf():
     font_name = "Helvetica"
     dejavu_paths = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "static/fonts/DejaVuSans.ttf",
-        "C:\\Windows\\Fonts\\arial.ttf"
+        "static/fonts/DejaVuSans.ttf"
     ]
     for path in dejavu_paths:
         if os.path.exists(path):
@@ -331,39 +347,6 @@ def export_pdf():
     output.seek(0)
     filename = f"izvestaj_{selected_date}.pdf" if selected_date else "jp_strezevo_zadachi.pdf"
     return send_file(output, mimetype="application/pdf", as_attachment=True, download_name=filename)
-
-@app.route("/admin/users", methods=["GET", "POST"])
-def admin_users():
-    if "username" not in session:
-        return redirect(url_for("login"))
-    
-    current_user = User.query.filter_by(username=session["username"]).first()
-    if current_user.role.lower() != "admin":
-        return redirect(url_for("index"))
-
-    if request.method == "POST":
-        username = request.form.get("username")
-        role = request.form.get("role")
-        sector = request.form.get("sector")
-
-        if User.query.filter_by(username=username).first():
-            flash("Корисничкото име веќе постои.", "danger")
-        else:
-            default_password = generate_password_hash("123456")
-            new_user = User(
-                username=username,
-                password_hash=default_password,
-                role=role,
-                sector=sector,
-                must_change_password=True
-            )
-            db.session.add(new_user)
-            db.session.commit()
-            flash("Корисникот е успешно креиран (привремена лозинка: 123456).", "success")
-        return redirect(url_for("admin_users"))
-
-    users = User.query.all()
-    return render_template("admin_users.html", user=current_user, users=users)
 
 @app.route("/logout")
 def logout():
