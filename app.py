@@ -59,7 +59,7 @@ class Task(db.Model):
     assigned_to_manager = db.Column(db.String(80), nullable=False)
     assigned_to_sector = db.Column(db.String(100), nullable=False)
     assigned_to_employee = db.Column(db.String(80), nullable=True)
-    status = db.Column(db.String(30), default='Доделено')
+    status = db.Column(db.String(30), default='Dodeleno')
     report_note = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -72,7 +72,7 @@ with app.app_context():
         cursor = connection.cursor()
         cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS password_hash VARCHAR(256) DEFAULT \'\';')
         cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT \'employee\';')
-        cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS sector VARCHAR(100) DEFAULT \'Општ сектор\';')
+        cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS sector VARCHAR(100) DEFAULT \'Opst sektor\';')
         cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT TRUE;')
         cursor.execute('ALTER TABLE "user" ALTER COLUMN password DROP NOT NULL;')
         connection.commit()
@@ -81,13 +81,24 @@ with app.app_context():
     except Exception as e:
         print("Migration note:", e)
 
-    # Список на основни корисници кои се креираат само ако не постојат
+    # Чистење на стари кирилични дупликати
+    cyrillic_usernames = [
+        "вера.бешлиевска", "владимир.крстевски", "васко.колевски", "горан.димовски", 
+        "вера бешлиевска", "владимир крстевски", "васко колевски", "горан димовски"
+    ]
+    for c_name in cyrillic_usernames:
+        old_user = User.query.filter_by(username=c_name).first()
+        if old_user:
+            db.session.delete(old_user)
+    db.session.commit()
+
+    # Список на основни официјални корисници исклучиво на латиница
     default_users = [
-        {"username": "admin", "role": "admin", "sector": "Централна управа", "pwd": "123456", "force_change": False},
-        {"username": "вера.бешлиевска", "role": "director", "sector": "Дирекција", "pwd": "123456", "force_change": False},
-        {"username": "владимир.крстевски", "role": "manager", "sector": "Технички сектор", "pwd": "123456", "force_change": False},
-        {"username": "васко.колевски", "role": "employee", "sector": "Технички сектор", "pwd": "123456", "force_change": False},
-        {"username": "горан.димовски", "role": "employee", "sector": "Технички сектор", "pwd": "123456", "force_change": False}
+        {"username": "admin", "role": "admin", "sector": "Centralna uprava", "pwd": "123456", "force_change": False},
+        {"username": "vera.beslievska", "role": "director", "sector": "Direkcija", "pwd": "123456", "force_change": False},
+        {"username": "vladimir.krstevski", "role": "manager", "sector": "Tehnicki sektor", "pwd": "123456", "force_change": False},
+        {"username": "vasko.kolevski", "role": "employee", "sector": "Tehnicki sektor", "pwd": "123456", "force_change": False},
+        {"username": "goran.dimovski", "role": "employee", "sector": "Tehnicki sektor", "pwd": "123456", "force_change": False}
     ]
 
     for u_data in default_users:
@@ -183,7 +194,7 @@ def login():
             if user.must_change_password:
                 return redirect(url_for("change_password"))
             return redirect(url_for("index"))
-        flash("Невалидно корисничко име или лозинка.", "danger")
+        flash("Nevalidno korisnicko ime ili lozinka.", "danger")
     return render_template("login.html")
 
 @app.route("/change-password", methods=["GET", "POST"])
@@ -198,19 +209,18 @@ def change_password():
             user.password_hash = generate_password_hash(new_password)
             user.must_change_password = False
             db.session.commit()
-            flash("Лозинката е успешно променета.", "success")
+            flash("Lozinkata e uspesno promeneta.", "success")
             return redirect(url_for("index"))
-        flash("Внесете нова лозинка.", "warning")
+        flash("Vnesete nova lozinka.", "warning")
     return render_template("change_password.html")
 
-# Рута за додавање корисник (само за администратор)
 @app.route("/add_user", methods=["POST"])
 def add_user():
     if "username" not in session:
         return redirect(url_for("login"))
     admin_user = User.query.filter_by(username=session["username"]).first()
     if not admin_user or admin_user.role.lower() != "admin":
-        flash("Немате администраторски права.", "danger")
+        flash("Nemate administratorski prava.", "danger")
         return redirect(url_for("index"))
 
     new_username = request.form.get("new_username")
@@ -219,12 +229,12 @@ def add_user():
     sector = request.form.get("sector")
 
     if not new_username or not new_password:
-        flash("Внесете корисничко име и лозинка.", "warning")
+        flash("Vnesete korisnicko ime i lozinka.", "warning")
         return redirect(url_for("index"))
 
     existing = User.query.filter_by(username=new_username).first()
     if existing:
-        flash("Корисникот веќе постои.", "danger")
+        flash("Korisnikot veke postoi.", "danger")
         return redirect(url_for("index"))
 
     user = User(
@@ -236,24 +246,23 @@ def add_user():
     )
     db.session.add(user)
     db.session.commit()
-    flash(f"Корисникот {new_username} е успешно креиран.", "success")
+    flash(f"Korisnikot {new_username} e uspesno kreiran.", "success")
     return redirect(url_for("index"))
 
-# Рута за ресетирање лозинка од страна на администратор
 @app.route("/reset_password/<int:user_id>", methods=["POST"])
 def reset_password(user_id):
     if "username" not in session:
         return redirect(url_for("login"))
     admin_user = User.query.filter_by(username=session["username"]).first()
     if not admin_user or admin_user.role.lower() != "admin":
-        flash("Немате администраторски права.", "danger")
+        flash("Nemate administratorski prava.", "danger")
         return redirect(url_for("index"))
 
     target_user = User.query.get_or_404(user_id)
     target_user.password_hash = generate_password_hash("123456")
     target_user.must_change_password = True
     db.session.commit()
-    flash(f"Лозинката за корисникот {target_user.username} е ресетирана на '123456'.", "success")
+    flash(f"Lozinkata za korisnikot {target_user.username} e resetirana na '123456'.", "success")
     return redirect(url_for("index"))
 
 @app.route("/add_task", methods=["POST"])
@@ -270,7 +279,7 @@ def add_task():
     manager_username = request.form.get("manager_username")
 
     manager_user = User.query.filter_by(username=manager_username).first()
-    sector = manager_user.sector if manager_user else "Општ сектор"
+    sector = manager_user.sector if manager_user else "Opst sektor"
 
     new_task = Task(
         title=title,
@@ -278,11 +287,11 @@ def add_task():
         assigned_by=user.username,
         assigned_to_manager=manager_username,
         assigned_to_sector=sector,
-        status="Доделено"
+        status="Dodeleno"
     )
     db.session.add(new_task)
     db.session.commit()
-    flash("Задачата е успешно креирана и доделена.", "success")
+    flash("Zadacata e uspesno kreirana i dodelena.", "success")
     return redirect(url_for("index"))
 
 @app.route("/update_task/<int:task_id>", methods=["POST"])
@@ -303,27 +312,27 @@ def update_task(task_id):
         task.report_note = report_note
 
     db.session.commit()
-    flash("Задачата е успешно ажурирана.", "success")
+    flash("Zadacata e uspesno azurirana.", "success")
     return redirect(url_for("index"))
 
 # ИЗВОЗ ВО EXCEL
 @app.route("/export/excel")
 def export_excel():
     if not openpyxl:
-        flash("Excel модулот не е достапен на серверот.", "danger")
+        flash("Excel modulot ne e dostapen na serverot.", "danger")
         return redirect(url_for("index"))
         
     selected_date = request.args.get("date")
     tasks = get_tasks_for_export(selected_date)
     if tasks is None:
-        flash("Немате дозвола за извоз на податоци.", "danger")
+        flash("Nemate dozvola za izvoz na podatoci.", "danger")
         return redirect(url_for("index"))
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Задачи"
+    ws.title = "Zadaci"
 
-    headers = ["ID", "Наслов", "Опис", "Раководител", "Сектор", "Вработен", "Статус", "Забелешка", "Датум"]
+    headers = ["ID", "Naslov", "Opis", "Rakovoditel", "Sektor", "Vraboten", "Status", "Zabeleska", "Datum"]
     ws.append(headers)
 
     for cell in ws[1]:
@@ -332,7 +341,7 @@ def export_excel():
     for t in tasks:
         ws.append([
             t.id, t.title, t.description or "", t.assigned_to_manager,
-            t.assigned_to_sector, t.assigned_to_employee or "Недоделено",
+            t.assigned_to_sector, t.assigned_to_employee or "Nedodeleno",
             t.status, t.report_note or "",
             t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ""
         ])
@@ -347,28 +356,28 @@ def export_excel():
 @app.route("/export/word")
 def export_word():
     if not Document:
-        flash("Word модулот не е достапен на серверот.", "danger")
+        flash("Word modulot ne e dostapen na serverot.", "danger")
         return redirect(url_for("index"))
 
     selected_date = request.args.get("date")
     tasks = get_tasks_for_export(selected_date)
     if tasks is None:
-        flash("Немате дозвола за извоз на податоци.", "danger")
+        flash("Nemate dozvola za izvoz na podatoci.", "danger")
         return redirect(url_for("index"))
 
     doc = Document()
-    title_suffix = f" за датум: {selected_date}" if selected_date else ""
-    doc.add_heading(f"ЈП Стрежево Битола - Извештај за задачи{title_suffix}", level=1)
+    title_suffix = f" za datum: {selected_date}" if selected_date else ""
+    doc.add_heading(f"JP Strezevo Bitola - Izvestaj za zadaci{title_suffix}", level=1)
     
     for t in tasks:
         p = doc.add_paragraph(style='List Bullet')
-        p.add_run(f"Наслов: {t.title}\n").bold = True
-        p.add_run(f"Опис: {t.description or 'Нема опис'}\n")
-        p.add_run(f"Раководител: {t.assigned_to_manager} | Сектор: {t.assigned_to_sector}\n")
-        p.add_run(f"Вработен: {t.assigned_to_employee or 'Недоделено'} | Статус: {t.status}\n")
+        p.add_run(f"Naslov: {t.title}\n").bold = True
+        p.add_run(f"Opis: {t.description or 'Nema opis'}\n")
+        p.add_run(f"Rakovoditel: {t.assigned_to_manager} | Sektor: {t.assigned_to_sector}\n")
+        p.add_run(f"Vraboten: {t.assigned_to_employee or 'Nedodeleno'} | Status: {t.status}\n")
         if t.report_note:
-            p.add_run(f"Забелешка: {t.report_note}\n")
-        p.add_run(f"Датум: {t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ''}\n")
+            p.add_run(f"Zabeleska: {t.report_note}\n")
+        p.add_run(f"Datum: {t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ''}\n")
         doc.add_paragraph("-" * 40)
 
     output = io.BytesIO()
@@ -381,13 +390,13 @@ def export_word():
 @app.route("/export/pdf")
 def export_pdf():
     if not REPORTLAB_AVAILABLE:
-        flash("PDF модулот не е достапен на серверот.", "danger")
+        flash("PDF modulot ne e dostapen na serverot.", "danger")
         return redirect(url_for("index"))
 
     selected_date = request.args.get("date")
     tasks = get_tasks_for_export(selected_date)
     if tasks is None:
-        flash("Немате дозвола за извоз на податоци.", "danger")
+        flash("Nemate dozvola za izvoz na podatoci.", "danger")
         return redirect(url_for("index"))
 
     output = io.BytesIO()
@@ -409,18 +418,18 @@ def export_pdf():
     title_style = ParagraphStyle("CyrillicTitle", parent=styles["Title"], fontName=font_name, fontSize=14, leading=18)
 
     elements = []
-    title_text = f"ЈП Стрежево - Извештај ({selected_date})" if selected_date else "ЈП Стрежево Битола - Извештај за задачи"
+    title_text = f"JP Strezevo - Izvestaj ({selected_date})" if selected_date else "JP Strezevo Bitola - Izvestaj za zadaci"
     elements.append(Paragraph(title_text, title_style))
     elements.append(Spacer(1, 10))
 
     for t in tasks:
         task_text = (
-            f"<b>Наслов:</b> {t.title}<br/>"
-            f"<b>Опис:</b> {t.description or 'Нема'}<br/>"
-            f"<b>Раководител:</b> {t.assigned_to_manager} | <b>Сектор:</b> {t.assigned_to_sector}<br/>"
-            f"<b>Вработен:</b> {t.assigned_to_employee or 'Недоделено'} | <b>Статус:</b> {t.status}<br/>"
-            f"<b>Забелешка:</b> {t.report_note or '-'}<br/>"
-            f"<i>Датум: {t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ''}</i><br/>" + "-"*50
+            f"<b>Naslov:</b> {t.title}<br/>"
+            f"<b>Opis:</b> {t.description or 'Nema'}<br/>"
+            f"<b>Rakovoditel:</b> {t.assigned_to_manager} | <b>Sektor:</b> {t.assigned_to_sector}<br/>"
+            f"<b>Vraboten:</b> {t.assigned_to_employee or 'Nedodeleno'} | <b>Status:</b> {t.status}<br/>"
+            f"<b>Zabeleska:</b> {t.report_note or '-'}<br/>"
+            f"<i>Datum: {t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ''}</i><br/>" + "-"*50
         )
         elements.append(Paragraph(task_text, normal_style))
         elements.append(Spacer(1, 6))
