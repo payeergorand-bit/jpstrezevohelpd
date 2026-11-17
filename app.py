@@ -66,16 +66,14 @@ class Task(db.Model):
 with app.app_context():
     db.create_all()
     
-    # Безбедно додавање/решавање на колоните во PostgreSQL за да се избегнат конфликти со стари колони
+    # Безбедно додавање/решавање на колоните во PostgreSQL
     try:
         connection = db.engine.raw_connection()
         cursor = connection.cursor()
-        # Додавање на нови колони ако недостасуваат
         cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS password_hash VARCHAR(256) DEFAULT \'\';')
         cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT \'employee\';')
         cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS sector VARCHAR(100) DEFAULT \'Општ сектор\';')
         cursor.execute('ALTER TABLE "user" ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT TRUE;')
-        # Дозволување на старата колона 'password' да биде NULL за да не предизвикува грешка
         cursor.execute('ALTER TABLE "user" ALTER COLUMN password DROP NOT NULL;')
         connection.commit()
         cursor.close()
@@ -104,13 +102,12 @@ with app.app_context():
             )
             db.session.add(new_u)
         else:
-            # Ажурирај го хешот на лозинката за сигурност ако веќе постои
             if not existing.password_hash:
                 existing.password_hash = generate_password_hash(u_data["pwd"])
     
     db.session.commit()
 
-# Помошна функција со поддршка за филтрирање по датум и улоги
+# Помошна функција за извоз
 def get_tasks_for_export(selected_date=None):
     if "username" not in session:
         return None
@@ -151,7 +148,6 @@ def index():
 
     selected_date = request.args.get("date")
 
-    # Филтрирање на задачите според улогата и избран датум од календарот
     if user.role.lower() in ["director", "admin"]:
         query = Task.query
     elif user.role.lower() == "manager":
@@ -171,8 +167,9 @@ def index():
 
     tasks = query.order_by(Task.created_at.desc()).all()
     managers = User.query.filter(User.role.in_(["employee", "manager"])).all()
+    all_users = User.query.all() if user.role.lower() == "admin" else []
     
-    return render_template("index.html", user=user, tasks=tasks, managers=managers, selected_date=selected_date)
+    return render_template("index.html", user=user, tasks=tasks, managers=managers, all_users=all_users, selected_date=selected_date)
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -205,6 +202,59 @@ def change_password():
             return redirect(url_for("index"))
         flash("Внесете нова лозинка.", "warning")
     return render_template("change_password.html")
+
+# Рута за додавање корисник (само за администратор)
+@app.route("/add_user", methods=["POST"])
+def add_user():
+    if "username" not in session:
+        return redirect(url_for("login"))
+    admin_user = User.query.filter_by(username=session["username"]).first()
+    if not admin_user or admin_user.role.lower() != "admin":
+        flash("Немате администраторски права.", "danger")
+        return redirect(url_for("index"))
+
+    new_username = request.form.get("new_username")
+    new_password = request.form.get("new_password")
+    role = request.form.get("role")
+    sector = request.form.get("sector")
+
+    if not new_username or not new_password:
+        flash("Внесете корисничко име и лозинка.", "warning")
+        return redirect(url_for("index"))
+
+    existing = User.query.filter_by(username=new_username).first()
+    if existing:
+        flash("Корисникот веќе постои.", "danger")
+        return redirect(url_for("index"))
+
+    user = User(
+        username=new_username,
+        password_hash=generate_password_hash(new_password),
+        role=role,
+        sector=sector,
+        must_change_password=True
+    )
+    db.session.add(user)
+    db.session.commit()
+    flash(f"Корисникот {new_username} е успешно креиран.", "success")
+    return redirect(url_for("index"))
+
+# Рута за ресетирање лозинка од страна на администратор
+@app.route("/reset_password/<int:user_id>", methods=["POST"])
+def reset_password(user_id):
+    if "username" not in session:
+        return redirect(url_for("login"))
+    admin_user = User.query.filter_by(username=session["username"]).first()
+    if not admin_user or admin_user.role.lower() != "admin":
+        flash("Немате администраторски права.", "danger")
+        return redirect(url_for("index"))
+
+    target_user = User.query.get_or_404(user_id)
+    target_user.password_hash = generate_password_hash("123456")
+    target_user.must_change_password = True
+    db.session.commit()
+    flash(f"Лозинката за корисникот {target_user.username} е ресетирана на '123456'.", "success")
+    return redirect(url_for("index"))
 
 @app.route("/add_task", methods=["POST"])
 def add_task():
@@ -256,7 +306,7 @@ def update_task(task_id):
     flash("Задачата е успешно ажурирана.", "success")
     return redirect(url_for("index"))
 
-# 1. ИЗВОЗ ВО EXCEL
+# ИЗВОЗ ВО EXCEL
 @app.route("/export/excel")
 def export_excel():
     if not openpyxl:
@@ -293,7 +343,7 @@ def export_excel():
     filename = f"izvestaj_{selected_date}.xlsx" if selected_date else "jp_strezevo_zadachi.xlsx"
     return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", as_attachment=True, download_name=filename)
 
-# 2. ИЗВОЗ ВО WORD
+# ИЗВОЗ ВО WORD
 @app.route("/export/word")
 def export_word():
     if not Document:
@@ -327,7 +377,7 @@ def export_word():
     filename = f"izvestaj_{selected_date}.docx" if selected_date else "jp_strezevo_zadachi.docx"
     return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document", as_attachment=True, download_name=filename)
 
-# 3. ИЗВОЗ ВО PDF
+# ИЗВОЗ ВО PDF
 @app.route("/export/pdf")
 def export_pdf():
     if not REPORTLAB_AVAILABLE:
