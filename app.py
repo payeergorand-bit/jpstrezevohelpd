@@ -64,6 +64,32 @@ with app.app_context():
         db.session.add(admin_user)
         db.session.commit()
 
+# Помошна функција со поддршка за филтрирање по датум и улоги
+def get_tasks_for_export(selected_date=None):
+    if "username" not in session:
+        return None
+    user = User.query.filter_by(username=session["username"]).first()
+    if not user or user.role.lower() not in ["admin", "director", "manager"]:
+        return None
+
+    query = Task.query
+    if user.role.lower() in ["admin", "director"]:
+        pass 
+    elif user.role.lower() == "manager":
+        query = query.filter(
+            (Task.assigned_to_manager == user.username) |
+            (Task.assigned_to_sector == user.sector)
+        )
+
+    if selected_date:
+        try:
+            date_obj = datetime.strptime(selected_date, '%Y-%m-%d').date()
+            query = query.filter(db.func.date(Task.created_at) == date_obj)
+        except ValueError:
+            pass
+
+    return query.order_by(Task.created_at.desc()).all()
+
 @app.route("/")
 def index():
     if "username" not in session:
@@ -77,19 +103,30 @@ def index():
     if user.must_change_password:
         return redirect(url_for("change_password"))
 
-    # Филтрирање на задачите според улогата на корисникот
-    if user.role in ["director", "admin"]:
-        tasks = Task.query.order_by(Task.created_at.desc()).all()
-    elif user.role == "manager":
-        tasks = Task.query.filter(
+    selected_date = request.args.get("date")
+
+    # Филтрирање на задачите според улогата и избран датум од календарот
+    if user.role.lower() in ["director", "admin"]:
+        query = Task.query
+    elif user.role.lower() == "manager":
+        query = Task.query.filter(
             (Task.assigned_to_manager == user.username) | 
             (Task.assigned_to_sector == user.sector)
-        ).order_by(Task.created_at.desc()).all()
+        )
     else:
-        tasks = Task.query.filter_by(assigned_to_employee=user.username).order_by(Task.created_at.desc()).all()
+        query = Task.query.filter_by(assigned_to_employee=user.username)
 
+    if selected_date:
+        try:
+            d_obj = datetime.strptime(selected_date, '%Y-%m-%d').date()
+            query = query.filter(db.func.date(Task.created_at) == d_obj)
+        except ValueError:
+            pass
+
+    tasks = query.order_by(Task.created_at.desc()).all()
     managers = User.query.filter(User.role.in_(["employee", "manager"])).all()
-    return render_template("index.html", user=user, tasks=tasks, managers=managers)
+    
+    return render_template("index.html", user=user, tasks=tasks, managers=managers, selected_date=selected_date)
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -129,7 +166,7 @@ def add_task():
         return redirect(url_for("login"))
     
     user = User.query.filter_by(username=session["username"]).first()
-    if user.role not in ["director", "admin", "manager"]:
+    if user.role.lower() not in ["director", "admin", "manager"]:
         return redirect(url_for("index"))
 
     title = request.form.get("title")
@@ -173,27 +210,11 @@ def update_task(task_id):
     flash("Задачата е успешно ажурирана.", "success")
     return redirect(url_for("index"))
 
-# Помошна функција за проверка на дозвола и филтрирање при извоз
-def get_tasks_for_export():
-    if "username" not in session:
-        return None
-    user = User.query.filter_by(username=session["username"]).first()
-    if not user or user.role not in ["admin", "director", "manager"]:
-        return None
-
-    if user.role in ["admin", "director"]:
-        return Task.query.order_by(Task.created_at.desc()).all()
-    elif user.role == "manager":
-        return Task.query.filter(
-            (Task.assigned_to_manager == user.username) |
-            (Task.assigned_to_sector == user.sector)
-        ).order_by(Task.created_at.desc()).all()
-    return []
-
-# 1. ИЗВОЗ ВО EXCEL
+# 1. ИЗВОЗ ВО EXCEL (со поддршка за датум)
 @app.route("/export/excel")
 def export_excel():
-    tasks = get_tasks_for_export()
+    selected_date = request.args.get("date")
+    tasks = get_tasks_for_export(selected_date)
     if tasks is None:
         flash("Немате дозвола за извоз на податоци.", "danger")
         return redirect(url_for("index"))
@@ -210,14 +231,9 @@ def export_excel():
 
     for t in tasks:
         ws.append([
-            t.id,
-            t.title,
-            t.description or "",
-            t.assigned_to_manager,
-            t.assigned_to_sector,
-            t.assigned_to_employee or "Недоделено",
-            t.status,
-            t.report_note or "",
+            t.id, t.title, t.description or "", t.assigned_to_manager,
+            t.assigned_to_sector, t.assigned_to_employee or "Недоделено",
+            t.status, t.report_note or "",
             t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ""
         ])
 
@@ -233,26 +249,22 @@ def export_excel():
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
+    filename = f"izvestaj_{selected_date}.xlsx" if selected_date else "jp_strezevo_zadachi.xlsx"
+    return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", as_attachment=True, download_name=filename)
 
-    return send_file(
-        output,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        as_attachment=True,
-        download_name="jp_strezevo_zadachi.xlsx"
-    )
-
-# 2. ИЗВОЗ ВО WORD
+# 2. ИЗВОЗ ВО WORD (со поддршка за датум)
 @app.route("/export/word")
 def export_word():
-    tasks = get_tasks_for_export()
+    selected_date = request.args.get("date")
+    tasks = get_tasks_for_export(selected_date)
     if tasks is None:
         flash("Немате дозвола за извоз на податоци.", "danger")
         return redirect(url_for("index"))
 
     doc = Document()
-    doc.add_heading("ЈП Стрежево Битола - Извештај за задачи", level=1)
-    doc.add_paragraph(f"Генерирано на: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
-
+    title_suffix = f" за датум: {selected_date}" if selected_date else ""
+    doc.add_heading(f"ЈП Стрежево Битола - Извештај за задачи{title_suffix}", level=1)
+    
     for t in tasks:
         p = doc.add_paragraph(style='List Bullet')
         p.add_run(f"Наслов: {t.title}\n").bold = True
@@ -267,18 +279,14 @@ def export_word():
     output = io.BytesIO()
     doc.save(output)
     output.seek(0)
+    filename = f"izvestaj_{selected_date}.docx" if selected_date else "jp_strezevo_zadachi.docx"
+    return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document", as_attachment=True, download_name=filename)
 
-    return send_file(
-        output,
-        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        as_attachment=True,
-        download_name="jp_strezevo_zadachi.docx"
-    )
-
-# 3. ИЗВОЗ ВО PDF
+# 3. ИЗВОЗ ВО PDF (со поддршка за кирилица и датум)
 @app.route("/export/pdf")
 def export_pdf():
-    tasks = get_tasks_for_export()
+    selected_date = request.args.get("date")
+    tasks = get_tasks_for_export(selected_date)
     if tasks is None:
         flash("Немате дозвола за извоз на податоци.", "danger")
         return redirect(url_for("index"))
@@ -299,48 +307,30 @@ def export_pdf():
             font_name = "CustomCyrillic"
             break
 
-    title_style = ParagraphStyle(
-        "CyrillicTitle",
-        parent=styles["Title"],
-        fontName=font_name,
-        fontSize=16,
-        leading=20
-    )
-    normal_style = ParagraphStyle(
-        "CyrillicNormal",
-        parent=styles["Normal"],
-        fontName=font_name,
-        fontSize=10,
-        leading=14
-    )
+    normal_style = ParagraphStyle("CyrillicNormal", parent=styles["Normal"], fontName=font_name, fontSize=10, leading=14)
+    title_style = ParagraphStyle("CyrillicTitle", parent=styles["Title"], fontName=font_name, fontSize=14, leading=18)
 
     elements = []
-    elements.append(Paragraph("ЈП Стрежево Битола - Извештај за задачи", title_style))
-    elements.append(Paragraph(f"Генерирано на: {datetime.now().strftime('%d.%m.%Y %H:%M')}", normal_style))
-    elements.append(Spacer(1, 14))
+    title_text = f"ЈП Стрежево - Извештај ({selected_date})" if selected_date else "ЈП Стрежево Битола - Извештај за задачи"
+    elements.append(Paragraph(title_text, title_style))
+    elements.append(Spacer(1, 10))
 
     for t in tasks:
         task_text = (
-            f"Наслов: {t.title}<br/>"
-            f"Опис: {t.description or 'Нема опис'}<br/>"
-            f"Раководител: {t.assigned_to_manager} | Сектор: {t.assigned_to_sector}<br/>"
-            f"Вработен: {t.assigned_to_employee or 'Недоделено'} | Статус: {t.status}<br/>"
-            f"Забелешка: {t.report_note or '-'}<br/>"
-            f"Датум: {t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ''}<br/>"
-            + "-" * 65
+            f"<b>Наслов:</b> {t.title}<br/>"
+            f"<b>Опис:</b> {t.description or 'Нема'}<br/>"
+            f"<b>Раководител:</b> {t.assigned_to_manager} | <b>Сектор:</b> {t.assigned_to_sector}<br/>"
+            f"<b>Вработен:</b> {t.assigned_to_employee or 'Недоделено'} | <b>Статус:</b> {t.status}<br/>"
+            f"<b>Забелешка:</b> {t.report_note or '-'}<br/>"
+            f"<i>Датум: {t.created_at.strftime('%d.%m.%Y %H:%M') if t.created_at else ''}</i><br/>" + "-"*50
         )
         elements.append(Paragraph(task_text, normal_style))
-        elements.append(Spacer(1, 8))
+        elements.append(Spacer(1, 6))
 
     doc.build(elements)
     output.seek(0)
-
-    return send_file(
-        output,
-        mimetype="application/pdf",
-        as_attachment=True,
-        download_name="jp_strezevo_zadachi.pdf"
-    )
+    filename = f"izvestaj_{selected_date}.pdf" if selected_date else "jp_strezevo_zadachi.pdf"
+    return send_file(output, mimetype="application/pdf", as_attachment=True, download_name=filename)
 
 @app.route("/admin/users", methods=["GET", "POST"])
 def admin_users():
@@ -348,7 +338,7 @@ def admin_users():
         return redirect(url_for("login"))
     
     current_user = User.query.filter_by(username=session["username"]).first()
-    if current_user.role != "admin":
+    if current_user.role.lower() != "admin":
         return redirect(url_for("index"))
 
     if request.method == "POST":
